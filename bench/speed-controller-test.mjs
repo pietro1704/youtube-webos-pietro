@@ -31,7 +31,7 @@ function harness(overrides = {}) {
   };
   const controller = createSpeedController({
     win,
-    getPlayer: () => player,
+    getPlayer: () => overrides.getPlayer ? overrides.getPlayer() : player,
     notify: () => {},
     configRead: (key) => config[key],
     configWrite(key, value) {
@@ -162,3 +162,41 @@ for (const [preference, available, expected] of [
     assert.deepEqual(calls[0], ['quality', expected, expected]);
   });
 }
+
+for (const scenario of ['destroy', 'navigate', 'replace-player', 'new-speed']) {
+  test(`delayed native menu synchronization is cancelled on ${scenario}`, () => {
+    let activePlayer;
+    const app = harness({ getPlayer: () => activePlayer });
+    activePlayer = app.player;
+    const rates = [];
+    app.player.__ytafOriginalSetPlaybackRate = rate => rates.push(rate);
+    app.player.getPlaybackRate = () => 1;
+    app.controller.setSpeed(2, { immediate: true });
+    if (scenario === 'destroy') app.controller.destroy();
+    if (scenario === 'navigate') app.player.getVideoData = () => ({ video_id: 'next-video' });
+    if (scenario === 'replace-player') activePlayer = { ...app.player };
+    if (scenario === 'new-speed') app.controller.setSpeed(1.5);
+    app.flush();
+    assert.deepEqual(rates, []);
+  });
+}
+
+test('delayed synchronization updates the current player when still valid', () => {
+  const { controller, player, flush } = harness();
+  const rates = [];
+  player.__ytafOriginalSetPlaybackRate = rate => rates.push(rate);
+  player.getPlaybackRate = () => 1;
+  controller.setSpeed(2, { immediate: true });
+  flush();
+  assert.deepEqual(rates, [2]);
+});
+
+test('late speed requests and errors are inert after destroy', () => {
+  const { controller, writes, calls, flush } = harness();
+  controller.destroy();
+  assert.equal(controller.setSpeed(2), false);
+  controller.onError(new Error('late'));
+  flush();
+  assert.deepEqual(writes, []);
+  assert.deepEqual(calls, []);
+});
