@@ -1,3 +1,4 @@
+import webpack from 'webpack';
 import CopyPlugin from 'copy-webpack-plugin';
 import { TransformAsyncModulesPlugin } from 'transform-async-modules-webpack-plugin';
 import pkgJson from './package.json' with { type: 'json' };
@@ -10,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const requireCjs = createRequire(import.meta.url);
+const { createBuildInfo, BuildInfoAssetPlugin } = requireCjs('./tools/build-info.cjs');
 const { AssertNoBareRequirePlugin } = requireCjs('./tools/assert-no-bare-require.cjs');
 
 /** @type {(env: Record<string, string>) => (import('webpack').Configuration)[]} */
@@ -17,6 +19,8 @@ const makeConfig = (env) => {
   const isModern = env && env.modern;
   // Dev-only instrumentation; see src/perf_mon.js. Off unless `--env perf`.
   const withPerfMon = !!(env && env.perf);
+
+  const buildInfo = createBuildInfo(__dirname, pkgJson.version, isModern ? 'modern' : 'legacy', withPerfMon);
 
   return [
     {
@@ -158,6 +162,8 @@ const makeConfig = (env) => {
         hints: false,
       },
       plugins: [
+        new webpack.DefinePlugin({ __YTAF_BUILD_INFO__: JSON.stringify(buildInfo) }),
+        new BuildInfoAssetPlugin(buildInfo),
         // Catches the "ReferenceError: require is not defined" failure mode at
         // build time instead of on the TV. See the plugin for the full story.
         new AssertNoBareRequirePlugin(),

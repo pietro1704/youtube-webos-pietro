@@ -4,6 +4,7 @@ import { dearrowModes, logoStyles, thumbnailQualityModes, videoCodecModes } from
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
 import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 import './ui.css';
+import { buildLabel } from './build-info.js';
 import './auto-login.js';
 import './return-dislike.js';
 import { initLogoStyle } from './logo-style.js';
@@ -575,6 +576,11 @@ function createOptionsPanel() {
     createLogo(logoRedUrl, 'logo-red'),
     createLogo(logoDarkUrl, 'logo-dark')
   );
+  const buildBadge = createElement('small', { id: 'ytaf-build-badge', text: buildLabel(), style: { fontSize: '1.4vh', overflowWrap: 'anywhere' } });
+  const updateBuildBadge = () => { buildBadge.hidden = !configRead('showBuildBadge'); };
+  updateBuildBadge();
+  configAddChangeListener('showBuildBadge', updateBuildBadge);
+  elmHeading.appendChild(buildBadge);
   elmContainer.appendChild(elmHeading);
   elmContainer.appendChild(tabMenu);
 
@@ -626,6 +632,8 @@ function createOptionsPanel() {
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  const buildDetails = createElement('div', { id: 'ytaf-build-info', text: buildLabel(), style: { overflowWrap: 'anywhere' } });
+  pageMain.appendChild(createSection('About this build', [buildDetails, createConfigCheckbox('showBuildBadge')]));
   elmContainer.appendChild(pageMain);
 
   // --- Pages 2-4: built off the critical path ---

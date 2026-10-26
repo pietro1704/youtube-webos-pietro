@@ -45,3 +45,4 @@ jobs:
           path: |
             dist/youtube.leanback.v4_*_all.ipk
             dist/*.manifest.json
+            dist/build-info.json

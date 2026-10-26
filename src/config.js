@@ -106,6 +106,7 @@ export const videoCodecModes = {
 };
 
 const configOptions = new Map([
+  ['showBuildBadge', { default: false, desc: 'Show build in header' }],
   ['uiTheme', { default: 'blue-force-field', desc: 'UI Theme' }],
   ['enableAdBlock', { default: true, desc: 'Ad Blocking' }],
   ['enableTrackingBlock', { default: false, desc: 'Reduce Telemetry & Tracking' }],
