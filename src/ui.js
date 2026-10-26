@@ -5,6 +5,8 @@ import { configAddChangeListener, configRead, configWrite, configGetDesc, segmen
 import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 import './ui.css';
 import { createQueueControls, captureQueueSelection } from './video-queue.js';
+import { captionLanguageChoices, createCaptionExtras } from './caption-preferences.js';
+import { captionSizeModes, captionStyleModes } from './captions/preferences.js';
 import { buildLabel } from './build-info.js';
 import './auto-login.js';
 import './return-dislike.js';
@@ -342,6 +344,23 @@ const createPlaybackSpeedControl = () => createAlignedCycleControl('defaultPlayb
 const createAudioSyncControl = () => createAlignedCycleControl('audioSyncOffsetMs', audioSyncModes);
 const createVideoQualityControl = () => createAlignedCycleControl('preferredVideoQuality', videoQualityModes);
 const createDeArrowControl = () => createAlignedCycleControl('dearrowMode', dearrowModes);
+function createCaptionLanguageControl() {
+  const cycle = direction => {
+    const choices = captionLanguageChoices();
+    const index = choices.findIndex(item => item.value === configRead('captionLanguage'));
+    configWrite('captionLanguage', choices[(index + direction + choices.length) % choices.length].value);
+    updateDisplay();
+  };
+  const { container, updateDisplay } = createGenericControlRow('Caption language', () => {
+    const current = captionLanguageChoices().find(item => item.value === configRead('captionLanguage'));
+    return current ? current.label : 'Keep YouTube choice';
+  }, () => cycle(-1), () => cycle(1), () => cycle(1));
+  configAddChangeListener('captionLanguage', updateDisplay);
+  window.addEventListener('ytaf-captions-update', updateDisplay);
+  updateDisplay();
+  return container;
+}
+
 function createThumbnailQualityControl() {
   const control = createAlignedCycleControl('thumbnailQualityMode', thumbnailQualityModes);
   // The strategy only means anything while the feature it tunes is on. Greyed
@@ -633,6 +652,7 @@ function createOptionsPanel() {
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  pageMain.appendChild(createSection('Captions', [createConfigCheckbox('enablePersistentCaptions'), createCaptionLanguageControl(), createAlignedCycleControl('captionFontSize', captionSizeModes), createAlignedCycleControl('captionStyle', captionStyleModes), createConfigCheckbox('captionAutoTranslate'), createCaptionExtras()]));
   pageMain.appendChild(createSection('Video queue', [createConfigCheckbox('enableVideoQueue'), createQueueControls()]));
   const buildDetails = createElement('div', { id: 'ytaf-build-info', text: buildLabel(), style: { overflowWrap: 'anywhere' } });
   pageMain.appendChild(createSection('About this build', [buildDetails, createConfigCheckbox('showBuildBadge')]));

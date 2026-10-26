@@ -106,6 +106,12 @@ export const videoCodecModes = {
 };
 
 const configOptions = new Map([
+  ['enablePersistentCaptions', { default: false, desc: 'Persistent captions' }],
+  ['captionLanguage', { default: 'native', desc: 'Caption language' }],
+  ['captionFontSize', { default: 'native', desc: 'Caption size', values: ['native', '-2', '-1', '0', '1', '2', '3', '4'] }],
+  ['captionStyle', { default: 'saved', desc: 'Caption style', values: ['saved', 'white', 'yellow', 'transparent', 'bold'] }],
+  ['captionSavedStyle', { default: null, desc: 'Saved native caption appearance' }],
+  ['captionAutoTranslate', { default: false, desc: 'Offer available automatic translations' }],
   ['enableVideoQueue', { default: false, desc: 'Enable video queue' }],
   ['showBuildBadge', { default: false, desc: 'Show build in header' }],
   ['uiTheme', { default: 'blue-force-field', desc: 'UI Theme' }],
