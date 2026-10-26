@@ -54,7 +54,9 @@ let pass = 0, fail = 0;
 const t = (n, ok, extra) => { if (ok) { pass++; console.log('PASS ' + n); }
   else { fail++; console.log('FAIL ' + n + (extra ? '\n     ' + extra : '')); } };
 
-setTimeout(() => {
+module.exports = { boot, emojiPayload, shelfOf };
+
+if (require.main === module) setTimeout(() => {
   // --- Ad Blocking OFF, emoji fix ON: emoji must still be wrapped ---
   {
     const { win, NS } = boot({ enableAdBlock: false, enableLegacyEmojiFix: true });

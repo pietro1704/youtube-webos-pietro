@@ -40,6 +40,7 @@ let playPauseNotificationTimer = null;
 let optionsPanel = null;
 let optionsPanelVisible = false;
 let panelInitBlock = false;
+let feedRefreshPending = false;
 
 const shortcutCache = {};
 // Define keys including colors
@@ -95,7 +96,16 @@ window.addEventListener('ytaf-page-update', (e) => {
         cachedSelectors.description = null;
         cachedSelectors.save = null;
     }
+    if (!e.detail.isWatch && !e.detail.isShorts && !optionsPanelVisible && feedRefreshPending) {
+        feedRefreshPending = false;
+        refreshPageLogic();
+    }
 });
+
+for (const key of ['enableAdBlock', 'removeGlobalShorts', 'removeLiveVideos',
+  'removeTopLiveGames', 'removeMostRelevant', 'hideGuestSignInPrompts']) {
+  configAddChangeListener(key, () => { feedRefreshPending = true; });
+}
 
 const ACTION_SCOPES = {
     config_menu: 'GLOBAL',
@@ -578,22 +588,19 @@ function createOptionsPanel() {
   const elRemoveLiveVideos = createConfigCheckbox('removeLiveVideos');
   const elRemoveTopLiveGames = createConfigCheckbox('removeTopLiveGames');
   const elRemoveMostRelevant = createConfigCheckbox('removeMostRelevant');
-  let elGuestPrompts = null;
   cosmeticGroup.push(elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant);
-  if (isGuestMode()) { elGuestPrompts = createConfigCheckbox('hideGuestSignInPrompts'); cosmeticGroup.push(elGuestPrompts); }
+  if (isGuestMode()) { cosmeticGroup.push(createConfigCheckbox('hideGuestSignInPrompts')); }
 
   pageMain.appendChild(createSection('Cosmetic Filtering', cosmeticGroup, 'ytaf-section-2col'));
 
   // Dependency Management
   const setState = (el, enabled) => { if (!el) return; const input = el.querySelector('input'); if (input) { input.disabled = !enabled; el.style.opacity = enabled ? '1' : '0.5'; }};
 
-  // Declared after the conditional elGuestPrompts assignment above.
-  // setState already no-ops on null, so no filtering needed.
   // Tracking Block rides on the same JSON.parse hook and network hooks as Ad
   // Blocking, so it genuinely does nothing while Ad Blocking is off. Greying it
   // out is what tells the user that, instead of leaving a checkbox that looks
   // armed but is inert.
-  const adBlockDependents = [elTrackingBlock, elRemoveGlobalShorts, elRemoveLiveVideos, elRemoveTopLiveGames, elRemoveMostRelevant, elGuestPrompts];
+  const adBlockDependents = [elTrackingBlock];
   const updateDependencyState = () => {
     const enabled = configRead('enableAdBlock');
     adBlockDependents.forEach(el => { setState(el, enabled); });
@@ -612,6 +619,9 @@ function createOptionsPanel() {
   createAudioSyncControl(),
   createElement('div', { text: 'Audio offset applies to accelerated playback. Positive values advance audio; negative values delay it.', style: { color: '#aaa', fontSize: '1.6vh' } }),
   createVideoQualityControl(),
+  ...(typeof window.AudioDecoder === 'function' && typeof window.MediaSource === 'function' ? [
+    createElement('div', { text: 'Above 1.25x, quality is limited to 1080p. Your saved quality returns at normal speed.', style: { color: '#aaa', fontSize: '1.6vh' } })
+  ] : []),
   createVideoCodecControl(),
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
@@ -755,6 +765,10 @@ function showOptionsPanel(visible) {
     lastSafeFocus = null;
     // Stop paying a forced layout per focus change across the whole app again.
     setSpatialNav('trackFocus', false);
+    if (feedRefreshPending && !isWatchPage() && !isShortsPage()) {
+      feedRefreshPending = false;
+      refreshPageLogic();
+    }
   }
 }
 
