@@ -25,12 +25,6 @@ const row = (label, sub, enabled = true) =>
      </ytlr-menu-item>
    </ytlr-compact-link-renderer>`;
 
-const playbackMenu = () =>
-  row('Quality', 'Auto') +
-  row('Captions', 'Off') +
-  row('Audio Track', 'English') +
-  row('Speed', 'Not available on this device', false);
-
 function boot() {
   const dom = new JSDOM(
     '<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app></ytlr-app></body></html>',
@@ -90,68 +84,55 @@ function check(name, condition, detail) {
 (async () => {
   const win = boot();
   const doc = win.document;
-
-  const unrelated = doc.createElement('div');
-  unrelated.className = 'AmQJbe';
-  unrelated.innerHTML = row('Save to playlist', '');
-  doc.querySelector('ytlr-app').appendChild(unrelated);
-  await wait(50);
-  check('unrelated menus are not modified',
-    !unrelated.querySelector('[data-ytaf-settings-entry]'));
-
+  let clock = win.Date.now();
+  win.Date.now = () => clock;
+  const key = (code, name, target = doc) => {
+    clock += 1000;
+    const event = new win.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: name });
+    Object.defineProperty(event, 'keyCode', { get: () => code });
+    target.dispatchEvent(event);
+  };
+  const open = () => doc.querySelector('.ytaf-ui-container')?.style.display === 'block';
   const menu = doc.createElement('div');
   menu.className = 'AmQJbe';
-  menu.innerHTML = playbackMenu();
+  // Native C5 menu: each renderer occupies one fixed-height virtual-list cell.
+  // The previous injection appended its clone inside Speed's cell, overflowing
+  // directly onto the following Repeat checkbox and its native hit target.
+  const rows = [row('Quality', 'Auto'), row('Captions', 'Off'), row('Audio Track', 'English'), row('Speed', 'Normal'),
+    '<ytlr-compact-toggle-button-renderer><ytlr-button role="checkbox" aria-label="Repeat" aria-checked="false" tabindex="0">Repeat</ytlr-button></ytlr-compact-toggle-button-renderer>'];
+  menu.innerHTML = '<yt-virtual-list><div>' + rows.map(markup => '<div class="native-slot" style="height:4rem;margin-bottom:0.5rem">' + markup + '</div>').join('') + '</div></yt-virtual-list>';
+  const repeat = menu.querySelector('[role="checkbox"]');
+  let repeats = 0;
+  repeat.addEventListener('click', () => { repeats++; repeat.setAttribute('aria-checked', 'true'); });
   doc.querySelector('ytlr-app').appendChild(menu);
   await wait(100);
-
-  let entry = menu.querySelector('[data-ytaf-settings-entry]');
-  check('entry is added to playback settings', !!entry);
-  check('entry is added exactly once',
-    menu.querySelectorAll('[data-ytaf-settings-entry]').length === 1);
-  check('entry inherits the enabled native row class',
-    entry && entry.classList.contains('enabled-marker'), entry && entry.className);
-  check('entry has a useful accessible label',
-    entry && /YouTube Extended/.test(entry.getAttribute('aria-label') || ''));
-
-  if (entry) entry.click();
-  await wait(30);
-  const panel = doc.querySelector('.ytaf-ui-container');
-  check('OK/click opens the complete settings panel',
-    panel && panel.style.display === 'block');
-
-  if (win.ytaf_showOptionsPanel) win.ytaf_showOptionsPanel(false);
-  menu.innerHTML = playbackMenu();
-  await wait(100);
-  entry = menu.querySelector('[data-ytaf-settings-entry]');
-  check('entry returns after YouTube re-renders the menu', !!entry);
-  check('re-render still produces only one entry',
-    menu.querySelectorAll('[data-ytaf-settings-entry]').length === 1);
-
-  if (entry) {
-    entry.setAttribute('tabindex', '0');
-    entry.focus();
-    const event = new win.KeyboardEvent('keydown', {
-      bubbles: true,
-      cancelable: true,
-      key: 'Enter'
-    });
-    Object.defineProperty(event, 'keyCode', { get: () => 13 });
-    entry.dispatchEvent(event);
+  check('native virtual-list cells retain exactly one renderer', Array.from(menu.querySelectorAll('.native-slot')).every(slot => slot.children.length === 1));
+  check('no injected settings row can overlap the following Repeat cell', !menu.querySelector('[data-ytaf-settings-entry]'));
+  check('native Repeat identity and position remain unchanged', menu.querySelector('[role="checkbox"]') === repeat && repeat.closest('.native-slot') === menu.querySelectorAll('.native-slot')[4]);
+  repeat.click();
+  check('native Repeat still receives its own click', repeats === 1 && repeat.getAttribute('aria-checked') === 'true' && !open());
+  key(13, 'Enter', repeat);
+  check('OK on native Repeat never opens extended settings', !open());
+  for (const code of [404, 172]) {
+    key(code, 'Green', repeat);
+    await wait(20);
+    check('green key ' + code + ' opens the complete settings panel from a native menu', open());
+    const panel = doc.querySelector('.ytaf-ui-container');
+    check('green panel retains all requested feature controls', !!panel && ['Watched videos', 'Startup and sidebar', 'Captions', 'Video queue'].every(label => panel.textContent.includes(label)));
+    key(code, 'Green', doc.activeElement);
+    await wait(20);
+    check('green key ' + code + ' closes settings without activating Repeat', !open() && repeats === 1);
   }
-  await wait(30);
-  check('Enter opens the panel for remote navigation',
-    panel && panel.style.display === 'block');
-
-  const nativeMenu = doc.createElement('div');
-  nativeMenu.className = 'AmQJbe';
-  nativeMenu.innerHTML =
-    row('Quality', 'Auto') + row('Captions', 'Off') + row('Speed', 'Normal');
-  doc.querySelector('ytlr-app').appendChild(nativeMenu);
+  menu.innerHTML = '<yt-virtual-list><div>' + rows.map(markup => '<div class="native-slot" style="height:4rem">' + markup + '</div>').join('') + '</div></yt-virtual-list>';
   await wait(100);
-  check('entry also appears when native Speed is already enabled',
-    !!nativeMenu.querySelector('[data-ytaf-settings-entry]'));
-
+  check('native menu re-render does not reintroduce the overlapping clone', !menu.querySelector('[data-ytaf-settings-entry]') && Array.from(menu.querySelectorAll('.native-slot')).every(slot => slot.children.length === 1));
+  menu.parentNode.removeChild(menu);
+  doc.body.className = 'WEB_PAGE_TYPE_BROWSE';
+  key(404, 'Green'); await wait(20);
+  check('green settings remain available outside playback', open());
+  key(404, 'Green', doc.activeElement); await wait(20);
+  check('closing outside playback leaves the app usable', !open());
   console.log(`\n${pass} passed, ${fail} failed`);
+  win.close();
   process.exit(fail ? 1 : 0);
 })();
