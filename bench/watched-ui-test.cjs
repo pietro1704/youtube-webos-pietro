@@ -11,7 +11,7 @@ const item = (id, percent) => ({ tileRenderer: { contentId: id, header: { tileHe
     setUserAgent(win, UA.webos3); win.launchParams = '{}';
     win.localStorage.setItem('ytaf-configuration', JSON.stringify({ enableAdBlock: false, enableLegacyEmojiFix: false, enableSponsorBlock: false,
       enableReturnYouTubeDislike: false, dearrowMode: 'off', enableAutoLogin: false, hideEndcards: false, hideGuestSignInPrompts: false }));
-    const account = value => win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'AUTHENTICATED_IDENTITY_TYPE_ACCOUNT', id: value } }));
+    const account = value => win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: value, identityCredentials: {} } }));
     account('A');
     applyBundleEnvironment(win);
     win.Headers = Headers; win.Response = Response; win.Request = Request;

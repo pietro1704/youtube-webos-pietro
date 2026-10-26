@@ -8,7 +8,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const native = function () {};
     native.instance = { resolveCommand: command => calls.push(command) };
     win._yttv = { native };
-    win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'AUTHENTICATED_IDENTITY_TYPE_ACCOUNT', accountId: 'A' } }));
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: 'A', identityCredentials: {} } }));
     const app = win.document.querySelector('ytlr-app');
     for (const [id, title] of [['aaaaaaaaaaa', 'A'], ['bbbbbbbbbbb', 'B']]) {
       const tile = win.document.createElement('ytlr-tile-renderer');
@@ -35,7 +35,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(rows().length, 1, 'consume only after the exact requested video starts');
     win.ytaf_showOptionsPanel(true); button('clear').click(); assert.equal(rows().length, 0);
     button('add').click(); assert.equal(rows().length, 1);
-    win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'AUTHENTICATED_IDENTITY_TYPE_ACCOUNT', accountId: 'B' } }));
+    win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: 'B', identityCredentials: {} } }));
     await wait(550); assert.equal(rows().length, 0);
     button('add').click(); assert.equal(rows().length, 0, 'stale account selection must not be queued');
     console.log('queue UI: selection, toggle, next/remove/clear, exact native command, confirmation and account isolation passed');
