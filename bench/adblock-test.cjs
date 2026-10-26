@@ -87,9 +87,9 @@ setTimeout(() => {
     trackingParams: 'tp'
   };
   const p = P(nativeStringify(player));
-  t('player: adPlacements cleared', p.adPlacements.length === 0);
-  t('player: playerAds cleared', p.playerAds.length === 0);
-  t('player: adSlots cleared', p.adSlots.length === 0);
+  t('player: adPlacements pruned by official uBlock rule', p.adPlacements === undefined);
+  t('player: playerAds pruned by official uBlock rule', p.playerAds === undefined);
+  t('player: adSlots pruned by official uBlock rule', p.adSlots === undefined);
   t('player: attestation removed', p.attestation === undefined);
   t('player: adBreakHeartbeatParams removed', p.adBreakHeartbeatParams === undefined);
   t('player: endscreen removed', p.endscreen === undefined);
@@ -147,12 +147,12 @@ setTimeout(() => {
     a.onResponseReceivedActions[0].appendContinuationItemsAction.continuationItems.length === 1);
 
   // --- Guards that must NOT fire ---
-  t('guard: small payload passes through untouched',
-    P('{"adPlacements":[{"a":1}],"responseContext":{}}').adPlacements.length === 1);
-  t('guard: botguardData payload untouched',
-    P(nativeStringify({ responseContext: { _pad: pad }, botguardData: { p: 1 }, adPlacements: [{ a: 1 }] })).adPlacements.length === 1);
+  t('guard: small payload still has advertising pruned',
+    P('{"adPlacements":[{"a":1}],"responseContext":{}}').adPlacements === undefined);
+  t('guard: botguard data itself is preserved',
+    P(nativeStringify({ responseContext: { _pad: pad }, botguardData: { p: 1 }, adPlacements: [{ a: 1 }] })).botguardData.p === 1);
   t('guard: unrelated large JSON untouched',
-    P(nativeStringify({ someOtherApi: true, adPlacements: [{ a: 1 }], _pad: pad })).adPlacements.length === 1);
+    P(nativeStringify({ someOtherApi: true, records: [{ a: 1 }], _pad: pad })).records.length === 1);
   t('guard: arrays parse cleanly', Array.isArray(P(nativeStringify([1, 2, 3, pad]))));
   t('guard: primitives still parse', P('5') === 5 && P('"s"') === 's' && P('null') === null);
   t('guard: reviver still honoured',
