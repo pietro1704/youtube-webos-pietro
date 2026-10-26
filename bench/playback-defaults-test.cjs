@@ -16,6 +16,13 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   control.click();
   await wait(250);
   assert.equal(JSON.parse(win.localStorage.getItem('ytaf-configuration')).defaultPlaybackSpeed, '2');
+  const offer = win.JSON.parse(win.JSON.stringify({ streamingData: { adaptiveFormats: [
+    { mimeType: 'audio/mp4; codecs="ac-3"', itag: 380 },
+    { mimeType: 'audio/mp4; codecs="mp4a.40.2"', itag: 140 },
+    { mimeType: 'video/mp4; codecs="av01.0.13M.08"', itag: 401 }
+  ] } }));
+  assert.ok(!offer.streamingData.adaptiveFormats.some(format => format.itag === 380),
+    'the new-video offer must not choose AC-3 instead of compatible AAC at 2x');
   win.document.body.className = 'WEB_PAGE_TYPE_WATCH';
   await wait(40);
   player.loadVideoById(videoId, 0);

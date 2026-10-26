@@ -1,4 +1,5 @@
 import { AudioEngine } from './audio-engine.js';
+import { installAudioFormatFilter } from './audio-formats.js';
 import {
   installMseHook,
   isSupportedSpeed,
@@ -444,6 +445,7 @@ export function installSpeedFeature(
     onError: ctrl.onError,
     onNativeAudio: ctrl.releaseAudioSink
   });
+  const audioFormats = installAudioFormatFilter(win, ctrl.getSpeed);
 
   // The adopted speed row calls ctrl.setSpeed for explicit user choices.
   // YouTube's internal setPlaybackRate(1) during navigation is not user input
@@ -458,6 +460,7 @@ export function installSpeedFeature(
     controller: ctrl,
     uninstall() {
       mseHook.uninstall();
+      audioFormats.uninstall();
       ctrl.destroy();
       win.document.removeEventListener('keydown', keyHandler, true);
       win.document.removeEventListener('keypress', keyHandler, true);
