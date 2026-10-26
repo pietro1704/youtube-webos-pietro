@@ -450,7 +450,7 @@ function hasChevron(row) {
  * the candidate against the rows that DO have a chevron, so YouTube renaming
  * its obfuscated classes cannot break this.
  */
-function findDisabledRow(rows) {
+export function findDisabledRow(rows) {
   if (rows.length < 2) return null;
 
   const withChevron = [];
