@@ -12,7 +12,7 @@
     "build:dev": "webpack --mode=development",
     "test": "npm run build && npm run test:features",
     "test:mse-speed": "node bench/mse-speed-test.mjs && node bench/speed-controller-test.mjs && node bench/speed-hardware-test.cjs dist/webOSUserScripts/userScript.js",
-    "test:features": "node bench/webos-cli-package-test.cjs && node bench/playback-preferences-test.mjs && node bench/dearrow-test.mjs && npm run test:mse-speed && node bench/speed-test.cjs dist/webOSUserScripts/userScript.js && node bench/settings-speed-test.cjs dist/webOSUserScripts/userScript.js && node bench/video-quality-test.cjs dist/webOSUserScripts/userScript.js && node bench/dependency-test.cjs dist/webOSUserScripts/userScript.js && node bench/dislike-timing-test.cjs dist/webOSUserScripts/userScript.js legacy && node bench/module-behaviour-test.cjs dist/webOSUserScripts/userScript.js",
+    "test:features": "node bench/webos-cli-package-test.cjs && node bench/playback-preferences-test.mjs && node bench/dearrow-test.mjs && npm run test:mse-speed && node bench/speed-test.cjs dist/webOSUserScripts/userScript.js && node bench/settings-speed-test.cjs dist/webOSUserScripts/userScript.js && node bench/settings-entry-test.cjs dist/webOSUserScripts/userScript.js && node bench/video-quality-test.cjs dist/webOSUserScripts/userScript.js && node bench/dependency-test.cjs dist/webOSUserScripts/userScript.js && node bench/dislike-timing-test.cjs dist/webOSUserScripts/userScript.js legacy && node bench/module-behaviour-test.cjs dist/webOSUserScripts/userScript.js",
     "build:dev:inspect": "npm run build:dev && npm run package && npm run deploy && npm run inspect",
     "package": "ares-package -n dist -o dist",
     "deploy": "node tools/deploy.js",
