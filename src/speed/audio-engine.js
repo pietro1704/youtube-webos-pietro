@@ -8,7 +8,7 @@ export class AudioEngine {
     speed,
     leadS = 0.4,
     chunkS = 0.1,
-    extraDelayMs = 0,
+    audioOffsetMs = 0,
     onError,
     createStretcher
   }) {
@@ -16,7 +16,8 @@ export class AudioEngine {
     this.speed = speed;
     this.leadS = leadS;
     this.chunkS = chunkS;
-    this.extraDelayMs = extraDelayMs;
+    this.audioOffsetMs = isFinite(audioOffsetMs) ? Math.max(-500, Math.min(500, Number(audioOffsetMs))) : 0;
+    this.outputLatencyS = 0;
     this.onError = onError;
     this.createStretcher =
       createStretcher ||
@@ -107,6 +108,31 @@ export class AudioEngine {
     this.volume = v;
     this.muted = muted;
     this.gain.gain.value = muted ? 0 : v;
+  }
+
+  outputLatencySeconds() {
+    let delay = (Number(this.ctx.baseLatency) || 0) + (Number(this.ctx.outputLatency) || 0);
+    try {
+      if (typeof this.ctx.getOutputTimestamp === 'function' && this.win.performance) {
+        const stamp = this.ctx.getOutputTimestamp();
+        const elapsed = (this.win.performance.now() - stamp.performanceTime) / 1000;
+        const measured = this.ctx.currentTime - (stamp.contextTime + elapsed);
+        if (stamp.contextTime > 0 && stamp.performanceTime > 0 && elapsed >= 0 && elapsed < 2 && isFinite(measured) && measured >= 0 && measured <= 1) delay = measured;
+      }
+    } catch { /* old webOS exposes the API but may not implement it */ }
+    this.outputLatencyS = isFinite(delay) ? Math.max(0, Math.min(1, delay)) : 0;
+    return this.outputLatencyS;
+  }
+
+  setAudioOffsetMs(value) {
+    const next = isFinite(value) ? Math.max(-500, Math.min(500, Number(value))) : 0;
+    if (next === this.audioOffsetMs) return false;
+    this.audioOffsetMs = next;
+    this.stopFuture();
+    this.stretcher = null;
+    this.anchorPending = true;
+    this.drifts = [];
+    return true;
   }
 
   configure(cfg) {
@@ -305,7 +331,9 @@ export class AudioEngine {
     if (!this.video) return;
 
     const currT = this.video.currentTime;
-    const endT = currT + 3;
+    const outputLead = this.outputLatencySeconds() + Math.max(0, this.audioOffsetMs / 1000);
+    const decodeAhead = Math.max(3, (outputLead + this.leadS + this.chunkS + 0.1) * Math.max(1, this.speed));
+    const endT = currT + decodeAhead;
 
     const currUs = Math.round(currT * 1e6);
     const endUs = Math.round(endT * 1e6);
@@ -347,6 +375,10 @@ export class AudioEngine {
 
     const nowCtx = this.ctx.currentTime;
     const currT = this.video.currentTime;
+    // currentTime describes the rendering clock, ahead of the sound arriving at
+    // the output device. Select content for its audible presentation time.
+    // Positive user offsets advance content to compensate external receiver lag.
+    const advance = this.outputLatencySeconds() + this.audioOffsetMs / 1000;
 
     if (this.video.paused) {
       this.lastVideoTime = currT;
@@ -363,7 +395,7 @@ export class AudioEngine {
       this.anchorPending = false;
       this.stalledTicks = 0;
       this.nextWhen = nowCtx + 0.03;
-      this.outContent = currT + (this.nextWhen - nowCtx) * this.speed;
+      this.outContent = currT + (this.nextWhen - nowCtx + advance) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
       this.drifts = [];
@@ -388,7 +420,7 @@ export class AudioEngine {
       this.stalledTicks = 0;
     }
 
-    const predictedT = currT + (this.nextWhen - nowCtx) * this.speed;
+    const predictedT = currT + (this.nextWhen - nowCtx + advance) * this.speed;
     const drift = this.outContent - predictedT;
     const starving = this.nextWhen <= nowCtx;
 
@@ -416,7 +448,7 @@ export class AudioEngine {
       this.stopFuture();
       this.sources.clear();
       this.nextWhen = nowCtx + 0.03;
-      this.outContent = currT + (this.nextWhen - nowCtx) * this.speed;
+      this.outContent = currT + (this.nextWhen - nowCtx + advance) * this.speed;
       this.inPos = this.outContent;
       this.stretcher = null;
       this.drifts = [];

@@ -191,3 +191,17 @@ test('a reused video retains its shim when the next MediaSource is buffered befo
   assert.equal(video.playbackRate, 1.5);
   hook.uninstall();
 });
+
+test('audio buffer events retain native EventTarget identity', async () => {
+  const { win, hook } = installAt(1.5);
+  const ms = new win.MediaSource();
+  const buffer = ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+  assert.ok(buffer instanceof win.EventTarget);
+  let target = null;
+  buffer.addEventListener('updateend', event => { target = event.target; });
+  buffer.appendBuffer(new Uint8Array());
+  await Promise.resolve();
+  assert.equal(target, buffer);
+  assert.equal(buffer.updating, false);
+  hook.uninstall();
+});

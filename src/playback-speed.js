@@ -654,6 +654,11 @@ export function initPlaybackSpeed() {
     bindVideo();
     if (isWatchPage()) applySpeed(desiredSpeed);
   });
+  configAddChangeListener('audioSyncOffsetMs', (evt) => {
+    const hardware = getHardwareController();
+    const engine = hardware && hardware.activeEngine();
+    if (engine) engine.setAudioOffsetMs(Number(evt.detail.newValue));
+  });
   onPageUpdate();
 
   if (typeof window !== 'undefined') {

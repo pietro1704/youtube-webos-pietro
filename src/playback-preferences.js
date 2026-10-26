@@ -17,6 +17,11 @@ export const videoQualityModes = {
   hd2160: '2160p / 4K',
 };
 
+export const audioSyncModes = {};
+for (let milliseconds = -500; milliseconds <= 500; milliseconds += 25) {
+  audioSyncModes[String(milliseconds)] = `${milliseconds > 0 ? '+' : ''}${milliseconds} ms`;
+}
+
 const QUALITY_HEIGHTS = {
   tiny: 144,
   small: 240,

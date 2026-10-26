@@ -125,6 +125,10 @@ function boot(honours) {
   };
 
   applyChrome38Downgrade(win);
+  // This harness exercises the WebCodecs-capable TV path with the ES5 bundle.
+  // Such TVs have native Reflect.construct; the separate legacy tests retain
+  // the full Chrome 38 downgrade without advertising WebCodecs support.
+  win.Reflect = Reflect;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, video };
 }

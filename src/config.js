@@ -1,4 +1,4 @@
-import { playbackSpeedModes, videoQualityModes } from './playback-preferences.js';
+import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 
 const CONFIG_KEY = 'ytaf-configuration';
 
@@ -146,6 +146,7 @@ const configOptions = new Map([
   ['preferredVideoQuality', { default: 'auto', desc: 'Default Quality', values: Object.keys(videoQualityModes) }],
   ['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
   ['defaultPlaybackSpeed', { default: '1', desc: 'Default Speed', values: Object.keys(playbackSpeedModes) }],
+  ['audioSyncOffsetMs', { default: '0', desc: 'Audio offset (ms, + advances)', values: Object.keys(audioSyncModes) }],
   ['dearrowMode', { default: 'titles_thumbnails', desc: 'DeArrow', values: Object.keys(dearrowModes) }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }]
