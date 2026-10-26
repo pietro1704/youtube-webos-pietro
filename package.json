@@ -64,7 +64,7 @@
     "style-loader": "^4.0.0",
     "transform-async-modules-webpack-plugin": "^1.1.1",
     "typescript": "^5.8.3",
-    "webpack": "^5.103.0",
+    "webpack": "^5.112.2",
     "webpack-cli": "^6.0.1"
   },
   "engines": {
