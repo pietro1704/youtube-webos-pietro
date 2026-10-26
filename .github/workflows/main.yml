@@ -32,10 +32,13 @@ jobs:
         if: matrix.variant == 'modern'
         run: npm run build:modern && npm run test:modern
       - run: npm run package
+      - run: npm run manifest
 
       - name: Upload tested package
         uses: actions/upload-artifact@v4
         with:
           name: youtube_adfree_${{ matrix.variant }}_${{ github.sha }}
           if-no-files-found: error
-          path: dist/youtube.leanback.v4_*_all.ipk
+          path: |
+            dist/youtube.leanback.v4_*_all.ipk
+            dist/*.manifest.json
