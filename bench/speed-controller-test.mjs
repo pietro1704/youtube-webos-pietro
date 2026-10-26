@@ -146,3 +146,19 @@ test('reset in the next video does not inherit the prior video burst rate', () =
   flush();
   assert.ok(calls.some(call => call[0] === 'load' && call[1] === 'next-video'));
 });
+
+for (const [preference, available, expected] of [
+  ['hd720', ['hd2160', 'hd1080', 'hd720'], 'hd720'],
+  ['hd2160', ['hd2160', 'hd720', 'medium'], 'hd720'],
+  ['auto', ['hd2160', 'hd1080', 'hd720'], 'hd1080'],
+  ['hd720', ['medium', 'small'], 'medium'],
+  ['hd720', [], 'auto']
+]) {
+  test(`accelerated quality respects ${preference} and available levels ${available}`, () => {
+    const { controller, player, calls, flush } = harness({ config: { preferredVideoQuality: preference } });
+    player.getAvailableQualityLevels = () => available;
+    controller.setSpeed(2);
+    flush();
+    assert.deepEqual(calls[0], ['quality', expected, expected]);
+  });
+}
