@@ -39,9 +39,16 @@ export class AudioEngine {
     this.video = null;
     this.decoder = null;
     this.cfg = null;
+    this.configureId = 0;
+    this.configPending = false;
+    this.recoveryNeeded = false;
+    this.recoveries = [];
     this.decodeGen = 0;
     this.sentToDecoder = new Set();
     this.failed = false;
+    this.decodedFrames = 0;
+    this.scheduledFrames = 0;
+    this.lastPcmPeak = 0;
 
     this.stretcher = null;
     this.stretcherRate = null;
@@ -136,17 +143,22 @@ export class AudioEngine {
   }
 
   configure(cfg) {
-    if (this.cfg && this.isSameCfg(this.cfg, cfg)) {
+    if (this.destroyed || this.failed) return;
+    if (this.cfg && this.isSameCfg(this.cfg, cfg) &&
+        (this.configPending || (this.decoder && this.decoder.state === 'configured'))) {
       return;
     }
     this.cfg = cfg;
+    const configureId = ++this.configureId;
+    this.configPending = true;
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null;
     this.win.AudioDecoder.isConfigSupported(cfg)
       .then((res) => {
         // A newer configure() may have arrived while this check was pending:
         // only the latest configuration gets a decoder.
-        if (this.cfg !== cfg || this.destroyed) return;
+        if (this.configureId !== configureId || this.destroyed || this.failed) return;
+        this.configPending = false;
         if (!res.supported) {
           this.reportError(
             Object.assign(new Error('Not supported'), {
@@ -155,16 +167,47 @@ export class AudioEngine {
           );
           return;
         }
-        this.decoder = new this.win.AudioDecoder({
-          output: (data) => this.onAudioData(data),
-          error: (e) => this.reportError(e)
+        const decoder = new this.win.AudioDecoder({
+          output: (data) => {
+            if (this.decoder !== decoder || this.destroyed) data.close();
+            else this.onAudioData(data);
+          },
+          error: (e) => this.onDecoderError(decoder, e)
         });
+        this.decoder = decoder;
         this.decoder.configure(cfg);
         this.decodeGen++;
         this.sentToDecoder.clear();
         this.pumpDecoder();
       })
-      .catch((e) => this.reportError(e));
+      .catch((e) => {
+        if (this.configureId !== configureId || this.destroyed) return;
+        this.configPending = false;
+        this.reportError(e);
+      });
+  }
+
+  onDecoderError(decoder, error) {
+    if (!decoder || this.destroyed || this.failed || this.decoder !== decoder) return;
+    // Chromium may close a perfectly valid decoder while the app is paused or
+    // in the background. Recreate it from the retained encoded archive when
+    // playback actually needs data, rather than permanently falling back to 1x.
+    if (error && error.name === 'QuotaExceededError') {
+      const now = Date.now();
+      this.recoveries = this.recoveries.filter(time => now - time < 30000);
+      if (this.recoveries.length < 3) {
+        this.recoveries.push(now);
+        if (decoder.state !== 'closed') decoder.close();
+        this.decoder = null;
+        this.recoveryNeeded = true;
+        this.stopFuture();
+        this.stretcher = null;
+        this.pcm = [];
+        this.anchorPending = true;
+        return;
+      }
+    }
+    this.reportError(error);
   }
 
   isSameCfg(c1, c2) {
@@ -190,7 +233,7 @@ export class AudioEngine {
   }
 
   push(chunks) {
-    if (this.failed) return;
+    if (this.failed || this.destroyed) return;
     for (const c of chunks) {
       const ptsUs = Math.round(c.pts * 1e6);
       const durUs = Math.round(c.duration * 1e6);
@@ -298,7 +341,7 @@ export class AudioEngine {
   }
 
   reportError(e) {
-    if (this.failed) return;
+    if (this.failed || this.destroyed) return;
     this.failed = true;
     if (this.onError) {
       this.onError(e);
@@ -306,7 +349,7 @@ export class AudioEngine {
   }
 
   onAudioData(data) {
-    if (this.failed) {
+    if (this.failed || this.destroyed) {
       data.close();
       return;
     }
@@ -320,12 +363,20 @@ export class AudioEngine {
       chs.push(buf);
     }
     data.close();
+    this.decodedFrames += n;
 
     this.pcm.push({ t, n, rate, ch: chs });
     this.pcm.sort((a, b) => a.t - b.t);
   }
 
   pumpDecoder() {
+    if (this.destroyed || this.failed || !this.video) return;
+    if (this.recoveryNeeded && !this.video.paused && !this.configPending &&
+        this.chunks.some(c => c.pts + c.dur >= this.video.currentTime * 1e6 &&
+          c.pts <= (this.video.currentTime + 3) * 1e6)) {
+      this.recoveryNeeded = false;
+      this.configure(this.cfg);
+    }
     if (!this.decoder || this.decoder.state !== 'configured' || this.failed)
       return;
     if (!this.video) return;
@@ -348,7 +399,14 @@ export class AudioEngine {
       const key = `${this.decodeGen}:${c.pts}`;
       if (!this.sentToDecoder.has(key)) {
         this.sentToDecoder.add(key);
-        this.decoder.decode(c.chunk);
+        const decoder = this.decoder;
+        try {
+          decoder.decode(c.chunk);
+        } catch (error) {
+          this.onDecoderError(decoder, error);
+          return;
+        }
+        if (this.decoder !== decoder || this.failed || this.destroyed) return;
       }
     }
   }
@@ -366,7 +424,7 @@ export class AudioEngine {
   }
 
   tick() {
-    if (this.failed || !this.video) return;
+    if (this.failed || this.destroyed || !this.video) return;
     this.prunePcm(
       Math.min(this.video.currentTime, this.stretcher ? this.inPos : Infinity) -
         2
@@ -515,6 +573,11 @@ export class AudioEngine {
           for (let c = 0; c < this.stretcherChannels; c++) {
             buf.copyToChannel(pulled[c], c);
           }
+          this.scheduledFrames += len;
+          this.lastPcmPeak = pulled.reduce((peak, channel) => {
+            for (let i = 0; i < channel.length; i++) peak = Math.max(peak, Math.abs(channel[i]));
+            return peak;
+          }, 0);
 
           const node = this.ctx.createBufferSource();
           node.buffer = buf;
