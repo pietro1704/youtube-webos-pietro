@@ -153,6 +153,7 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
   function apply(tile, state, branding, mode) {
     if (
       destroyed ||
+      !root.contains(tile) ||
       states.get(tile) !== state ||
       videoIdFrom(tile) !== state.videoId ||
       !branding
@@ -195,6 +196,12 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
 
   function refresh() {
     if (destroyed) return;
+    states.forEach((state, tile) => {
+      if (!root.contains(tile)) {
+        restore(state);
+        states.delete(tile);
+      }
+    });
     const mode = getMode();
     if (mode === 'off') {
       states.forEach(restore);

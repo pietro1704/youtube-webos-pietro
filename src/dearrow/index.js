@@ -19,7 +19,10 @@ export function initDeArrow() {
     client,
     getMode: () => configRead('dearrowMode'),
   });
-  const refresh = () => adapter && adapter.refresh();
+  const refresh = () => {
+    if (configRead('dearrowMode') === 'off') client.clear();
+    if (adapter) adapter.refresh();
+  };
   configAddChangeListener('dearrowMode', refresh);
   window.addEventListener('ytaf-page-update', refresh);
   adapter.refresh();
@@ -30,6 +33,7 @@ export function initDeArrow() {
       configRemoveChangeListener('dearrowMode', refresh);
       window.removeEventListener('ytaf-page-update', refresh);
       if (adapter) adapter.destroy();
+      client.destroy();
       adapter = null;
     },
   };
