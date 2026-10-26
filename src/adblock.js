@@ -3,6 +3,7 @@ import { isShortsPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
+import { pruneYouTubeAds, installYouTubeNetworkRules, installInitialResponseRules } from './ublock/youtube.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -398,12 +399,14 @@ function hookedParse(text, reviver) {
   // (localStorage reads, config, per-tile metadata) and none of them can be a
   // filterable response, so those calls must cost as close to nothing as
   // possible on top of the native parse.
-  if (!anyFilterEnabled || !text || text.length < 500) {
+  if (!anyFilterEnabled || !text) {
     return origParse.call(this, text, reviver);
   }
 
   const data = origParse.call(this, text, reviver);
   if (!data || typeof data !== 'object') return data;
+  if (cfgFlags.enableAdBlock) pruneYouTubeAds(data);
+  if (text.length < 500) return data;
   if (
     data.responseContext === undefined &&
     data.playerResponse === undefined &&
@@ -1017,6 +1020,8 @@ export function destroyAdblock() {
 }
 
 initAdblock();
+installYouTubeNetworkRules(window, () => !!cfgSnapshot.enableAdBlock);
+installInitialResponseRules(window, () => !!cfgSnapshot.enableAdBlock);
 
 if (cfgSnapshot[CONFIG_KEYS.ADBLOCK] && cfgSnapshot[CONFIG_KEYS.TRACKING]) {
   try {
