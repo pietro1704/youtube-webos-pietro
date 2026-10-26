@@ -78,7 +78,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     if (kind === 'absent') {
       const mods = win.__ytafMods || [];
       t('[mods] playback, quality and DeArrow are registered as bundled modules',
-        mods.length === 3 && mods.every((mod) => mod.source === 'bundled' && mod.state === 'started'),
+        ['playback-preferences', 'video-quality', 'dearrow', 'video-queue'].every(id => mods.some(mod => mod.id === id)) &&
+        mods.every((mod) => mod.source === 'bundled' && mod.state === 'started'),
         JSON.stringify(mods));
     }
 

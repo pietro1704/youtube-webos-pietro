@@ -1,8 +1,10 @@
+import { initVideoQueue } from '../video-queue.js';
 import { initDeArrow } from '../dearrow/index.js';
 import { initPlaybackSpeed } from '../playback-speed.js';
 import { initVideoQualityModule } from '../video-quality.js';
 
 export const bundledMods = [
+  { id: 'video-queue', version: '1.0.0', init: initVideoQueue },
   { id: 'playback-preferences', version: '1.0.0', init: initPlaybackSpeed },
   { id: 'video-quality', version: '1.0.0', init: initVideoQualityModule },
   { id: 'dearrow', version: '1.0.0', init: initDeArrow },

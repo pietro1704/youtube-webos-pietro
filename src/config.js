@@ -106,6 +106,7 @@ export const videoCodecModes = {
 };
 
 const configOptions = new Map([
+  ['enableVideoQueue', { default: false, desc: 'Enable video queue' }],
   ['showBuildBadge', { default: false, desc: 'Show build in header' }],
   ['uiTheme', { default: 'blue-force-field', desc: 'UI Theme' }],
   ['enableAdBlock', { default: true, desc: 'Ad Blocking' }],
