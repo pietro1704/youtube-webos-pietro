@@ -2,12 +2,9 @@ import { configRead, configAddChangeListener, configRemoveChangeListener } from 
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage } from './utils.js';
+import { qualityStorageHeight, selectPreferredQuality } from './playback-preferences.js';
 
 const DEBUG = false;
-
-const TARGET_QUALITIES = new Set([
-  'highres', 'hd2160', 'hd1440', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny'
-]);
 
 const IS_WEBOS_25 = isWebOS25();
 const QUALITY_KEY = 'yt-player-quality';
@@ -15,14 +12,13 @@ const ONE_YEAR_MS = 31536000000; // 365 * 24 * 60 * 60 * 1000
 
 // Caching: In-memory cache for localStorage & Config
 let cachedQualitySettings = null;
-let _shouldForce = false;
+let _preferredQuality = 'auto';
 
 let player = null;
 let lastVideoId = null;
 let initTimer = null;
 let configCleanup = null;
 let isDestroyed = false;
-let lastWriteTime = 0;
 let statePollingInterval = null;
 let lastKnownState = null;
 let _isWatchPageCached = false;
@@ -43,7 +39,7 @@ const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
 
 function isForceEnabled() {
-  return _shouldForce && (!player?.isInline || !player.isInline());
+  return _preferredQuality !== 'auto' && (!player?.isInline || !player.isInline());
 }
 
 async function ensurePlaybackStarts() {
@@ -110,11 +106,22 @@ async function ensurePlaybackStarts() {
   }
 }
 
-function isQualityAlreadyMax() {
+function getTargetQuality() {
+  if (!player || !isForceEnabled()) return null;
+  try {
+    return selectPreferredQuality(player.getAvailableQualityLevels?.() || [], _preferredQuality);
+  } catch {
+    return null;
+  }
+}
+
+function isQualityAlreadyPreferred() {
   if (!player) return false;
   try {
+    const target = getTargetQuality();
+    if (!target) return true;
     const currentQuality = player.getPlaybackQuality?.();
-    return TARGET_QUALITIES.has(currentQuality);
+    return currentQuality === target;
   } catch {
     return false;
   }
@@ -122,11 +129,12 @@ function isQualityAlreadyMax() {
 
 function setLocalStorageQuality() {
   if (!isForceEnabled()) return false;
+  const height = qualityStorageHeight(_preferredQuality);
+  if (!height) return false;
   
   const now = Date.now();
-  if (now - lastWriteTime < 2000) return false;
 
-  if (cachedQualitySettings && cachedQualitySettings.quality === 4320) {
+  if (cachedQualitySettings && cachedQualitySettings.quality === height && cachedQualitySettings.previousQuality === height) {
     return false; 
   }
   
@@ -144,12 +152,12 @@ function setLocalStorageQuality() {
     }
 
     if (cachedQualitySettings && 
-        cachedQualitySettings.quality === 4320 && 
-        cachedQualitySettings.previousQuality === 4320) {
+        cachedQualitySettings.quality === height &&
+        cachedQualitySettings.previousQuality === height) {
         return false; 
     }
 
-    const innerData = { quality: 4320, previousQuality: 4320 };
+    const innerData = { quality: height, previousQuality: height };
       
     const qualityObj = {
       data: JSON.stringify(innerData),
@@ -159,14 +167,22 @@ function setLocalStorageQuality() {
     
     window.localStorage.setItem(QUALITY_KEY, JSON.stringify(qualityObj));
     cachedQualitySettings = innerData;
-    lastWriteTime = now;
     
-    DEBUG && console.info('[VideoQuality] Set localStorage quality to 4320p');
+    DEBUG && console.info('[VideoQuality] Set localStorage quality to', height + 'p');
     return true;
     
   } catch (e) {
     DEBUG && console.warn('[VideoQuality] Failed to set localStorage quality:', e);
     return false;
+  }
+}
+
+function clearStoredQuality() {
+  cachedQualitySettings = null;
+  try {
+    window.localStorage.removeItem(QUALITY_KEY);
+  } catch {
+    /* storage unavailable */
   }
 }
 
@@ -180,14 +196,19 @@ function setQualityOnPlayer() {
       return { success: false, upgraded: false };
     }
     
-    if (isQualityAlreadyMax()) {
+    const target = getTargetQuality();
+    if (!target) {
+      return { success: false, upgraded: false };
+    }
+
+    if (isQualityAlreadyPreferred()) {
       return { success: true, upgraded: false };
     }
     
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', player.getPlaybackQuality?.());
     
-    player.setPlaybackQualityRange('highres', 'highres');
-    player.setPlaybackQuality?.('highres');
+    player.setPlaybackQualityRange(target, target);
+    player.setPlaybackQuality?.(target);
     
     const afterQuality = player.getPlaybackQuality?.();
     const qualityLabel = player.getPlaybackQualityLabel?.();
@@ -225,7 +246,7 @@ function interceptAndUpgradeQuality(videoId) {
   
   if (videoBeingProcessed === videoId) return;
   
-  if (isQualityAlreadyMax()) {
+  if (isQualityAlreadyPreferred()) {
     qualitySetForVideo.add(videoId);
     return;
   }
@@ -273,7 +294,7 @@ function handleStateChange(state) {
   }));
 
   // Everything below is quality forcing only.
-  if (!_shouldForce) return;
+  if (!isForceEnabled()) return;
 
   try {
     const videoData = player.getVideoData?.();
@@ -304,13 +325,13 @@ function handleStateChange(state) {
         case STATE_UNSTARTED:
         case STATE_BUFFERING:
             if (isNewVideo && player.getAvailableQualityLevels?.()?.length > 0) {
-                if (!isQualityAlreadyMax()) notifyIfUpgraded(setQualityOnPlayer());
+                if (!isQualityAlreadyPreferred()) notifyIfUpgraded(setQualityOnPlayer());
                 qualitySetForVideo.add(videoId);
             }
             break;
 
         case STATE_PLAYING:
-            if (!isQualityAlreadyMax()) {
+            if (!isQualityAlreadyPreferred()) {
                 interceptAndUpgradeQuality(videoId);
             } else {
                 qualitySetForVideo.add(videoId);
@@ -394,9 +415,10 @@ export function initVideoQuality() {
   isDestroyed = false;
   _isWatchPageCached = true;
   
-  _shouldForce = configRead('forceHighResVideo');
-  
-  setLocalStorageQuality();
+  _preferredQuality = configRead('preferredVideoQuality');
+
+  if (_preferredQuality === 'auto') clearStoredQuality();
+  else setLocalStorageQuality();
   
   const attach = () => {
     if (isDestroyed) return true;
@@ -427,16 +449,20 @@ export function initVideoQuality() {
       if (configAddChangeListener && !configCleanup) {
         const onChange = (evt) => {
           if (isDestroyed) return;
-          _shouldForce = !!evt.detail.newValue;
+          _preferredQuality = evt.detail.newValue;
           
-          if (_shouldForce) {
+          if (_preferredQuality !== 'auto') {
             cachedQualitySettings = null;
             setLocalStorageQuality();
             qualitySetForVideo.clear();
+            handleStateChange(player?.getPlayerState?.());
+          } else {
+            clearStoredQuality();
+            qualitySetForVideo.clear();
           }
         };
-        configCleanup = configAddChangeListener('forceHighResVideo', onChange) || 
-          (() => configRemoveChangeListener?.('forceHighResVideo', onChange));
+        configAddChangeListener('preferredVideoQuality', onChange);
+        configCleanup = () => configRemoveChangeListener?.('preferredVideoQuality', onChange);
       }
       
       DEBUG && console.info('[VideoQuality] ✅ Attached to player');
@@ -484,7 +510,10 @@ function handleNavigation(event) {
   }
 }
 
+let listenersSetup = false;
 function setupListeners() {
+    if (listenersSetup) return;
+    listenersSetup = true;
     window.addEventListener('yt-navigate-finish', handleNavigation);
 
     // Passed directly: handleNavigation falls back to isWatchPage() when the
@@ -500,4 +529,6 @@ function setupListeners() {
     window.addEventListener('beforeunload', destroyVideoQuality);
 }
 
-setupListeners();
+export function initVideoQualityModule() {
+  setupListeners();
+}

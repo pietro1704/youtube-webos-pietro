@@ -3,6 +3,7 @@
  * changes: the tile tracker must still find the same elements, and the dislike
  * panel must still be detected by focus and navigate the same way.
  */
+/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
@@ -37,7 +38,8 @@ function boot(cfg, html, url) {
   win.Image = class { set src(_v) { setTimeout(() => this.onerror && this.onerror(), 0); } };
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify(Object.assign({
     enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
-    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
+    enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false,
+    dearrowMode: 'off'
   }, cfg)));
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
@@ -77,6 +79,39 @@ setTimeout(async () => {
     notAThumb.style.backgroundImage = 'url("https://i.ytimg.com/vi/skipme00000/hqdefault.jpg")';
 
     for (const n of [a.host, b.host, c.host, nested, notAThumb]) app.appendChild(n);
+
+    // DOM sampling is deliberately pull-based: a parsed browse response queues
+    // verification, then the verifier prioritises IDs that are currently
+    // rendered. Adding nodes alone no longer installs a body-wide observer.
+    const entry = (id) => ({
+      tileRenderer: {
+        header: {
+          tileHeaderRenderer: {
+            thumbnail: {
+              thumbnails: [{ url: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` }]
+            }
+          }
+        }
+      }
+    });
+    win.JSON.parse(win.JSON.stringify({
+      responseContext: { pad: 'x'.repeat(600) },
+      contents: {
+        tvBrowseRenderer: {
+          content: {
+            tvSurfaceContentRenderer: {
+              content: {
+                sectionListRenderer: {
+                  contents: [{ shelfRenderer: { content: { horizontalListRenderer: {
+                    items: [entry('abc123XYZ_-'), entry('nested00000')]
+                  } } } }]
+                }
+              }
+            }
+          }
+        }
+      }
+    }));
     await tick(); await new Promise((r) => setTimeout(r, 60)); pump(); await tick();
     await new Promise((r) => setTimeout(r, 60)); pump(); await tick();
 
@@ -85,12 +120,11 @@ setTimeout(async () => {
     t('tracks nested thumbnails via querySelectorAll', probedIds.indexOf('nested00000') !== -1);
     t('does NOT track <image> without a <thumbnail> ancestor',
       probedIds.indexOf('skipme00000') === -1);
-    // The source tile is already hqdefault, and getThumbnailUrl() returns null
-    // when the rewritten path equals the original - so only the two higher
-    // qualities are probed. Asserting that keeps the no-op skip honest.
-    t('probes the higher qualities only',
-      /maxresdefault/.test(probedIds) && /sddefault/.test(probedIds) &&
-      probed.filter((u) => /hqdefault/.test(u)).length === 0,
+    // The current ladder intentionally probes maxres only: hq720 and maxres
+    // are usually the same size, while hqdefault is already guaranteed.
+    t('probes maxres only',
+      probed.filter((u) => /maxresdefault/.test(u)).length === 2 &&
+      probed.filter((u) => /hqdefault|sddefault/.test(u)).length === 0,
       'probed: ' + probed.slice(0, 4).join(' | '));
 
     // Removal must untrack without throwing.

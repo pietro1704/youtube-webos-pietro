@@ -25,23 +25,21 @@
  * what the player exposes and whether each path actually takes effect, which is
  * the information needed to go further.
  */
-import { configRead } from './config.js';
+import { configAddChangeListener, configRead, configWrite } from './config.js';
 import { showNotification } from './notifications.js';
 import { SELECTORS, getVideo, isWatchPage, SYNTHETIC_KEY_FLAG } from './utils.js';
 
 /** Matches the rates YouTube itself offers, so the OSD reads familiarly. */
 export const SPEED_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const DEFAULT_SPEED = 1;
-const MIN_SPEED = 0.1;
-const MAX_SPEED = 4;
+const MIN_SPEED = SPEED_STEPS[0];
+const MAX_SPEED = SPEED_STEPS[SPEED_STEPS.length - 1];
 
 /**
- * The rate the user asked for. Kept across videos within a session so binge
- * watching at 1.5x doesn't reset every time autoplay advances, and deliberately
- * NOT persisted to config — a speed left on by accident would be baffling after
- * a relaunch.
+ * The rate the user asked for. It is backed by the settings store so it survives
+ * autoplay, navigation and app relaunches.
  */
-let desiredSpeed = DEFAULT_SPEED;
+let desiredSpeed = clamp(Number(configRead('defaultPlaybackSpeed')));
 let applying = false;
 let attachedVideo = null;
 let listenersBound = false;
@@ -136,6 +134,10 @@ function bindVideo() {
 export function setSpeed(rate, { notify = true } = {}) {
   if (!isWatchPage()) return false;
   desiredSpeed = clamp(Number(rate) || DEFAULT_SPEED);
+  const persisted = String(Number(desiredSpeed.toFixed(2)));
+  if (configRead('defaultPlaybackSpeed') !== persisted) {
+    configWrite('defaultPlaybackSpeed', persisted);
+  }
   bindVideo();
   const ok = applySpeed(desiredSpeed, { notify });
   if (!ok && notify) {
@@ -564,6 +566,13 @@ export function initPlaybackSpeed() {
 
   window.addEventListener('ytaf-page-update', onPageUpdate);
   document.addEventListener('keydown', onSettingsKey, true);
+  configAddChangeListener('defaultPlaybackSpeed', (evt) => {
+    const next = clamp(Number(evt.detail.newValue));
+    if (Math.abs(next - desiredSpeed) <= 0.001) return;
+    desiredSpeed = next;
+    bindVideo();
+    if (isWatchPage()) applySpeed(desiredSpeed);
+  });
   onPageUpdate();
 
   if (typeof window !== 'undefined') {

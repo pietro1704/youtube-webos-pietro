@@ -5,6 +5,9 @@
  *   - setPlaybackRate working (Cobalt-like)
  * In every case the user must end up at the rate they asked for.
  */
+/* eslint-env node */
+/* eslint-disable no-await-in-loop */
+/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
@@ -13,7 +16,7 @@ const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 
-function boot(playerKind) {
+function boot(playerKind, config = {}) {
   const dom = new JSDOM(
     '<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>' +
     '<div id="ytlr-player__player-container">' +
@@ -32,7 +35,8 @@ function boot(playerKind) {
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
     enablePlaybackSpeed: true, enableAdBlock: true, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, enableLegacyEmojiFix: false,
-    upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false
+    upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false,
+    ...config
   }));
   applyChrome38Downgrade(win);
 
@@ -72,6 +76,12 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const S = win.__ytafSpeed;
     t(`[${kind}] __ytafSpeed exposed`, !!S);
     if (!S) continue;
+    if (kind === 'absent') {
+      const mods = win.__ytafMods || [];
+      t('[mods] playback, quality and DeArrow are registered as bundled modules',
+        mods.length === 3 && mods.every((mod) => mod.source === 'bundled' && mod.state === 'started'),
+        JSON.stringify(mods));
+    }
 
     t(`[${kind}] setSpeed(1.5) reaches the video`,
       S.setSpeed(1.5) === true && Math.abs(video.playbackRate - 1.5) < 0.001,
@@ -106,16 +116,41 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     if (kind !== 'absent') {
       t(`[${kind}] tries the YouTube API first`, calls.length > 0, 'calls=' + calls.length);
     }
-    // diag() is async now: it MEASURES each strategy against the wall clock
-    // rather than trusting the playbackRate property.
     let diagResult;
     try { diagResult = await S.diag(); } catch (e) { diagResult = 'threw: ' + e.message; }
     t(`[${kind}] diag() resolves without throwing`,
       !!diagResult && typeof diagResult === 'object' && 'playerFound' in diagResult,
       typeof diagResult === 'string' ? diagResult : JSON.stringify(diagResult).slice(0, 120));
-    t(`[${kind}] diag() reports measurement state`,
-      !!diagResult && 'measured' in diagResult,
-      diagResult && JSON.stringify(diagResult.measured).slice(0, 100));
+    t(`[${kind}] diag() reports the direct-write result`,
+      !!diagResult && 'directWriteWorks' in diagResult,
+      diagResult && JSON.stringify(diagResult).slice(0, 100));
+  }
+
+  // A configured default is applied on boot and to a fresh video element.
+  {
+    const { win, video } = boot('working', { defaultPlaybackSpeed: '1.5' });
+    await wait(300);
+    t('[persistent] configured default applies on launch',
+      Math.abs(video.playbackRate - 1.5) < 0.001, 'rate=' + video.playbackRate);
+
+    const replacement = win.document.createElement('video');
+    let replacementRate = 1;
+    Object.defineProperty(replacement, 'playbackRate', {
+      get: () => replacementRate,
+      set: (value) => { replacementRate = value; },
+      configurable: true
+    });
+    video.parentNode.replaceChild(replacement, video);
+    win.dispatchEvent(new win.CustomEvent('ytaf-page-update', { detail: { isWatch: true } }));
+    await wait(30);
+    t('[persistent] configured default applies to a new video element',
+      Math.abs(replacement.playbackRate - 1.5) < 0.001, 'rate=' + replacement.playbackRate);
+
+    win.__ytafSpeed.setSpeed(1.75);
+    await wait(250);
+    const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration'));
+    t('[persistent] a speed chosen in the player is saved',
+      saved.defaultPlaybackSpeed === '1.75', 'saved=' + saved.defaultPlaybackSpeed);
   }
 
   // Speed must not apply off a watch page.
