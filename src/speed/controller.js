@@ -177,6 +177,13 @@ export function createSpeedController({
   let lastReloadAt = 0;
   let lastVideoId = null;
   let lastError = null;
+  let destroyed = false;
+  let menuTimer = null;
+
+  function cancelMenuSync() {
+    if (menuTimer !== null) win.clearTimeout(menuTimer);
+    menuTimer = null;
+  }
 
   function videoId() {
     try {
@@ -238,6 +245,7 @@ export function createSpeedController({
   }
 
   function applyReload({ position: at, fromSpeed, videoId: expectedId }) {
+    if (destroyed) return;
     if (expectedId && expectedId !== videoId()) return;
     // Back where the burst started: the playing MediaSource is already right.
     if (currentSpeed === fromSpeed) return;
@@ -278,10 +286,15 @@ export function createSpeedController({
     // line with the real speed once the reloaded video has started.
     const setRate = player.__ytafOriginalSetPlaybackRate;
     if (setRate && typeof player.getPlaybackRate === 'function') {
-      win.setTimeout(() => {
+      cancelMenuSync();
+      const rate = currentSpeed;
+      const id = videoData.video_id;
+      menuTimer = win.setTimeout(() => {
+        menuTimer = null;
+        if (destroyed || getPlayer() !== player || videoId() !== id || currentSpeed !== rate) return;
         try {
-          if (player.getPlaybackRate() !== currentSpeed)
-            setRate.call(player, currentSpeed);
+          if (player.getPlaybackRate() !== rate)
+            setRate.call(player, rate);
         } catch {
           // The menu only shows a stale value; playback itself is unaffected.
         }
@@ -290,6 +303,7 @@ export function createSpeedController({
   }
 
   function setSpeed(speed, { immediate = false, shouldNotify = true, reload = true, persist = true } = {}) {
+    if (destroyed) return false;
     speed = Number(speed);
     if (!isSupportedSpeed(speed)) return false;
     if (speed === currentSpeed) return true;
@@ -302,6 +316,7 @@ export function createSpeedController({
       return false;
     }
     const previousSpeed = currentSpeed;
+    cancelMenuSync();
     lastVideoId = videoId() || lastVideoId;
     currentSpeed = speed;
     if (persist && configWrite) configWrite('defaultPlaybackSpeed', String(speed));
@@ -336,6 +351,8 @@ export function createSpeedController({
   function onRateRequest() {}
 
   function onError(error) {
+    if (destroyed) return;
+    cancelMenuSync();
     lastError = error && (error.name + ': ' + error.message);
     if (currentSpeed !== 1) {
       const previousSpeed = currentSpeed;
@@ -357,6 +374,8 @@ export function createSpeedController({
   }
 
   function destroy() {
+    destroyed = true;
+    cancelMenuSync();
     if (pending) win.clearTimeout(pending.timer);
     pending = null;
     releaseAudioSink();
