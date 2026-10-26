@@ -1,3 +1,4 @@
+import { initWatchedFilter } from '../watched-filter.js';
 import { initNavigationPreferences } from '../navigation-preferences.js';
 import { initCaptionPreferences } from '../caption-preferences.js';
 import { initVideoQueue } from '../video-queue.js';
@@ -6,6 +7,7 @@ import { initPlaybackSpeed } from '../playback-speed.js';
 import { initVideoQualityModule } from '../video-quality.js';
 
 export const bundledMods = [
+  { id: 'watched-filter', version: '1.0.0', init: initWatchedFilter },
   { id: 'navigation-preferences', version: '1.0.0', init: initNavigationPreferences },
   { id: 'caption-preferences', version: '1.0.0', init: initCaptionPreferences },
   { id: 'video-queue', version: '1.0.0', init: initVideoQueue },
