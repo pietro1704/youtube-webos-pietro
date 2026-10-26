@@ -106,6 +106,11 @@ export const videoCodecModes = {
 };
 
 const configOptions = new Map([
+  ['enableSidebarCustomization', { default: false, desc: 'Customize sidebar' }],
+  ['startInSubscriptions', { default: false, desc: 'Open Subscriptions on next startup' }],
+  ['hiddenSidebarItems', { default: [], desc: 'Hidden sidebar links' }],
+  ['sidebarOrder', { default: [], desc: 'Sidebar link order' }],
+  ['hideSidebarChannels', { default: false, desc: 'Hide subscribed channels in sidebar' }],
   ['enablePersistentCaptions', { default: false, desc: 'Persistent captions' }],
   ['captionLanguage', { default: 'native', desc: 'Caption language' }],
   ['captionFontSize', { default: 'native', desc: 'Caption size', values: ['native', '-2', '-1', '0', '1', '2', '3', '4'] }],

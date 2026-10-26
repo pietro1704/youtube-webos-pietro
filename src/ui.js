@@ -7,6 +7,7 @@ import './ui.css';
 import { createQueueControls, captureQueueSelection } from './video-queue.js';
 import { captionLanguageChoices, createCaptionExtras } from './caption-preferences.js';
 import { captionSizeModes, captionStyleModes } from './captions/preferences.js';
+import { createNavigationControls } from './navigation-preferences.js';
 import { buildLabel } from './build-info.js';
 import './auto-login.js';
 import './return-dislike.js';
@@ -652,6 +653,7 @@ function createOptionsPanel() {
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  pageMain.appendChild(createSection('Startup and sidebar', [createConfigCheckbox('startInSubscriptions'), createConfigCheckbox('enableSidebarCustomization'), createConfigCheckbox('hideSidebarChannels'), createNavigationControls()]));
   pageMain.appendChild(createSection('Captions', [createConfigCheckbox('enablePersistentCaptions'), createCaptionLanguageControl(), createAlignedCycleControl('captionFontSize', captionSizeModes), createAlignedCycleControl('captionStyle', captionStyleModes), createConfigCheckbox('captionAutoTranslate'), createCaptionExtras()]));
   pageMain.appendChild(createSection('Video queue', [createConfigCheckbox('enableVideoQueue'), createQueueControls()]));
   const buildDetails = createElement('div', { id: 'ytaf-build-info', text: buildLabel(), style: { overflowWrap: 'anywhere' } });
