@@ -45,7 +45,7 @@ function harness(overrides = {}) {
       callback();
     }
   };
-  return { controller, config, writes, calls, flush };
+  return { controller, config, writes, calls, flush, player };
 }
 
 test('speed choice persists and reloads at the same content position', () => {
@@ -99,4 +99,50 @@ test('disabled control rejects a rate without changing state', () => {
   assert.equal(controller.getSpeed(), 1);
   assert.deepEqual(writes, []);
   assert.deepEqual(calls, []);
+});
+
+test('an unsupported video does not erase the default for the next video', () => {
+  const { controller, config, player } = harness({ config: { defaultPlaybackSpeed: '2' } });
+  assert.equal(controller.getSpeed(), 2);
+  controller.onError(new Error('unsupported audio'));
+  assert.equal(controller.getSpeed(), 1);
+  assert.equal(config.defaultPlaybackSpeed, '2');
+  player.getVideoData = () => ({ video_id: 'next-video' });
+  assert.equal(controller.getSpeed(), 2);
+});
+
+test('navigation cancels a pending reload of the previous video position', () => {
+  const { controller, player, calls, flush } = harness();
+  controller.setSpeed(2);
+  player.getVideoData = () => ({ video_id: 'next-video' });
+  flush();
+  assert.deepEqual(calls, []);
+});
+
+test('uninstall cancels pending reloads', () => {
+  const { controller, calls, flush } = harness();
+  controller.setSpeed(2);
+  controller.destroy();
+  flush();
+  assert.deepEqual(calls, []);
+});
+
+test('a new speed choice after navigation gets its own video and position', () => {
+  const { controller, player, calls, flush } = harness();
+  controller.setSpeed(2);
+  player.getVideoData = () => ({ video_id: 'next-video' });
+  player.getCurrentTime = () => 7;
+  controller.setSpeed(1.5);
+  flush();
+  assert.ok(calls.some(call => call[0] === 'load' && call[1] === 'next-video' && call[2] === 7));
+});
+
+test('reset in the next video does not inherit the prior video burst rate', () => {
+  const { controller, player, calls, flush } = harness();
+  controller.setSpeed(2);
+  player.getVideoData = () => ({ video_id: 'next-video' });
+  assert.equal(controller.getSpeed(), 2);
+  controller.reset();
+  flush();
+  assert.ok(calls.some(call => call[0] === 'load' && call[1] === 'next-video'));
 });

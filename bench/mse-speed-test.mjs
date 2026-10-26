@@ -175,3 +175,19 @@ test('1x leaves the native media element and SourceBuffer untouched', () => {
 test('unsupported speeds fail before a broken timeline can be installed', () => {
   assert.throws(() => new SpeedTimeMap(3), /Unsupported speed/);
 });
+
+test('a reused video retains its shim when the next MediaSource is buffered before src assignment', () => {
+  const { win, hook } = installAt(1.5);
+  const video = new win.HTMLMediaElement();
+  const first = new win.MediaSource();
+  video.src = win.URL.createObjectURL(first);
+  first.addSourceBuffer('video/mp4; codecs="avc1"');
+  video._currentTime = 4;
+  assert.equal(video.currentTime, 6);
+  const second = new win.MediaSource();
+  second.addSourceBuffer('video/mp4; codecs="avc1"');
+  video.src = win.URL.createObjectURL(second);
+  assert.equal(video.currentTime, 6);
+  assert.equal(video.playbackRate, 1.5);
+  hook.uninstall();
+});

@@ -263,6 +263,11 @@ function patchAvailableRates() {
  * Run on a TV while a video is playing and send the output.
  */
 function diag() {
+  const hardware = getHardwareController();
+  if (hardware) {
+    return { mode: 'mse-wsola', configuredSpeed: configRead('defaultPlaybackSpeed'),
+      playerFound: !!getPlayer(), ...hardware.diagnostic() };
+  }
   const player = getPlayer();
   const video = getVideo();
   const out = {
@@ -641,6 +646,11 @@ export function initPlaybackSpeed() {
     const next = clamp(Number(evt.detail.newValue));
     if (Math.abs(next - desiredSpeed) <= 0.001) return;
     desiredSpeed = next;
+    const hardware = getHardwareController();
+    if (hardware) {
+      hardware.setSpeed(next, { shouldNotify: false, reload: isWatchPage(), persist: false });
+      return;
+    }
     bindVideo();
     if (isWatchPage()) applySpeed(desiredSpeed);
   });

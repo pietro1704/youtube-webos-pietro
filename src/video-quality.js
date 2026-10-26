@@ -21,6 +21,7 @@ let configCleanup = null;
 let isDestroyed = false;
 let statePollingInterval = null;
 let lastKnownState = null;
+let lastPolledVideoId = null;
 let _isWatchPageCached = false;
 let videoBeingProcessed = null;
 let kickstartInProgress = false;
@@ -39,7 +40,14 @@ const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
 
 function isForceEnabled() {
-  return _preferredQuality !== 'auto' && (!player?.isInline || !player.isInline());
+  return effectivePreference() !== 'auto' && (!player?.isInline || !player.isInline());
+}
+
+function effectivePreference() {
+  const hardware = typeof window.AudioDecoder === 'function' && typeof window.MediaSource === 'function';
+  const speed = window.__ytafSpeed ? window.__ytafSpeed.getSpeed() : Number(configRead('defaultPlaybackSpeed'));
+  if (hardware && speed > 1.25 && (_preferredQuality === 'auto' || qualityStorageHeight(_preferredQuality) > 1080)) return 'hd1080';
+  return _preferredQuality;
 }
 
 async function ensurePlaybackStarts() {
@@ -109,7 +117,7 @@ async function ensurePlaybackStarts() {
 function getTargetQuality() {
   if (!player || !isForceEnabled()) return null;
   try {
-    return selectPreferredQuality(player.getAvailableQualityLevels?.() || [], _preferredQuality);
+    return selectPreferredQuality(player.getAvailableQualityLevels?.() || [], effectivePreference());
   } catch {
     return null;
   }
@@ -129,7 +137,7 @@ function isQualityAlreadyPreferred() {
 
 function setLocalStorageQuality() {
   if (!isForceEnabled()) return false;
-  const height = qualityStorageHeight(_preferredQuality);
+  const height = qualityStorageHeight(effectivePreference());
   if (!height) return false;
   
   const now = Date.now();
@@ -357,8 +365,10 @@ function startStatePolling() {
     }
     try {
       const state = player.getPlayerState?.();
-      if (state !== lastKnownState) {
+      const id = player.getVideoData?.()?.video_id;
+      if (state !== lastKnownState || id !== lastPolledVideoId) {
         lastKnownState = state;
+        lastPolledVideoId = id;
         handleStateChange(state);
       }
     } catch { /* ignore */ }
@@ -399,6 +409,7 @@ export function destroyVideoQuality() {
   player = null;
   lastVideoId = null;
   lastKnownState = null;
+  lastPolledVideoId = null;
   configCleanup = null;
   qualitySetForVideo.clear();
   videoBeingProcessed = null;
@@ -417,7 +428,7 @@ export function initVideoQuality() {
   
   _preferredQuality = configRead('preferredVideoQuality');
 
-  if (_preferredQuality === 'auto') clearStoredQuality();
+  if (!isForceEnabled()) clearStoredQuality();
   else setLocalStorageQuality();
   
   const attach = () => {
@@ -430,28 +441,26 @@ export function initVideoQuality() {
     
     try {
       player = p;
-      let listenerAttached = false;
       
       try {
         if (player.addEventListener) {
             player.addEventListener('onStateChange', handleStateChange);
-            listenerAttached = true;
             DEBUG && console.log('[VideoQuality] Native listener attached');
         }
       } catch (e) {
         DEBUG && console.warn('[VideoQuality] Event listener failed, falling back to poll:', e);
       }
       
-      if (!listenerAttached) {
-          startStatePolling();
-      }
+      // Some webOS players accept addEventListener but omit events during
+      // autoplay. Track both state and video identity even with a listener.
+      startStatePolling();
       
       if (configAddChangeListener && !configCleanup) {
         const onChange = (evt) => {
           if (isDestroyed) return;
           _preferredQuality = evt.detail.newValue;
           
-          if (_preferredQuality !== 'auto') {
+          if (isForceEnabled()) {
             cachedQualitySettings = null;
             setLocalStorageQuality();
             qualitySetForVideo.clear();
@@ -459,10 +468,27 @@ export function initVideoQuality() {
           } else {
             clearStoredQuality();
             qualitySetForVideo.clear();
+            player?.setPlaybackQualityRange?.('auto', 'auto');
+            player?.setPlaybackQuality?.('auto');
           }
         };
         configAddChangeListener('preferredVideoQuality', onChange);
-        configCleanup = () => configRemoveChangeListener?.('preferredVideoQuality', onChange);
+        const onSpeedChange = () => {
+          cachedQualitySettings = null;
+          qualitySetForVideo.clear();
+          if (isForceEnabled()) {
+            setLocalStorageQuality();
+            handleStateChange(player?.getPlayerState?.());
+          } else {
+            clearStoredQuality();
+            player?.setPlaybackQualityRange?.('auto', 'auto');
+          }
+        };
+        configAddChangeListener('defaultPlaybackSpeed', onSpeedChange);
+        configCleanup = () => {
+          configRemoveChangeListener('preferredVideoQuality', onChange);
+          configRemoveChangeListener('defaultPlaybackSpeed', onSpeedChange);
+        };
       }
       
       DEBUG && console.info('[VideoQuality] ✅ Attached to player');
