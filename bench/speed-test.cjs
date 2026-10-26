@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -38,7 +38,7 @@ function boot(playerKind, config = {}) {
     upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false,
     ...config
   }));
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
 
   const video = win.document.querySelector('video');
   // jsdom's <video> has no writable playbackRate; give it real semantics.
