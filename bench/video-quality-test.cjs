@@ -65,6 +65,7 @@ function boot(preference, available) {
 
   const calls = [];
   let current = 'medium';
+  let videoId = 'abcdefghijk';
   const player = win.document.getElementById(
     'ytlr-player__player-container-player',
   );
@@ -77,7 +78,7 @@ function boot(preference, available) {
     calls.push(['quality', quality]);
     current = quality;
   };
-  player.getVideoData = () => ({ video_id: 'abcdefghijk' });
+  player.getVideoData = () => ({ video_id: videoId });
   player.getPlayerState = () => -1;
   player.addEventListener = () => {};
   player.removeEventListener = () => {};
@@ -86,7 +87,7 @@ function boot(preference, available) {
   player.pauseVideo = () => {};
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  return { dom, win, calls };
+  return { dom, win, calls, newVideo(id) { videoId = id; current = 'medium'; } };
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -118,7 +119,27 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     app.dom.window.close();
   }
 
-  console.log('video quality: 7 passed, 0 failed');
+  {
+    const app = boot('hd2160', ['hd2160', 'hd1080']);
+    await wait(350);
+    app.calls.length = 0;
+    app.newVideo('second-video');
+    await wait(650);
+    assert.ok(app.calls.some(call => call[0] === 'range' && call[1] === 'hd2160'),
+      'quality default must apply to a new video even if the native state event is missing');
+    app.win.ytaf_showOptionsPanel(true);
+    const control = Array.from(app.win.document.querySelectorAll('.shortcut-control-row'))
+      .find(row => row.textContent.includes('Default Quality'));
+    assert.ok(control);
+    app.calls.length = 0;
+    control.click();
+    await wait(50);
+    assert.ok(app.calls.some(call => call[0] === 'range' && call[1] === 'auto'),
+      'selecting Automatic must release the current player quality constraint');
+    app.dom.window.close();
+  }
+
+  console.log('video quality: 10 passed, 0 failed');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

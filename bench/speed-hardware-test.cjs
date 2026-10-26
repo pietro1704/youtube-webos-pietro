@@ -141,7 +141,9 @@ async function effective(video) {
   return (video.currentTime - t0) / ((Date.now() - w0) / 1000);
 }
 
-(async () => {
+module.exports = { boot };
+
+if (require.main === module) (async () => {
   // A normal device: first strategy works, no escalation.
   {
     const { win, video } = boot('direct');

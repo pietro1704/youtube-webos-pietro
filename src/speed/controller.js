@@ -173,6 +173,15 @@ export function createSpeedController({
   let activeSink = null;
   let pending = null;
   let lastReloadAt = 0;
+  let lastVideoId = null;
+  let lastError = null;
+
+  function videoId() {
+    try {
+      const player = getPlayer();
+      return player && player.getVideoData && player.getVideoData().video_id;
+    } catch { return null; }
+  }
 
   function isSupported() {
     return typeof win.AudioDecoder !== 'undefined';
@@ -183,6 +192,13 @@ export function createSpeedController({
   }
 
   function getSpeed() {
+    const id = videoId();
+    if (id && id !== lastVideoId) {
+      lastVideoId = id;
+      const preferred = Number(configRead('defaultPlaybackSpeed'));
+      currentSpeed = isSupportedSpeed(preferred) ? preferred : 1;
+      lastError = null;
+    }
     return enabled() && isSupported() ? currentSpeed : 1;
   }
 
@@ -197,10 +213,14 @@ export function createSpeedController({
   function scheduleReload(fromSpeed, immediate = false) {
     const player = getPlayer();
     if (!player) return;
+    if (pending && pending.videoId !== videoId()) {
+      win.clearTimeout(pending.timer);
+      pending = null;
+    }
     if (pending) {
       win.clearTimeout(pending.timer);
     } else {
-      pending = { position: position(player), fromSpeed, timer: null };
+      pending = { position: position(player), videoId: videoId(), fromSpeed, timer: null };
     }
     if (immediate) {
       const p = pending;
@@ -215,7 +235,8 @@ export function createSpeedController({
     }, RELOAD_DELAY_MS);
   }
 
-  function applyReload({ position: at, fromSpeed }) {
+  function applyReload({ position: at, fromSpeed, videoId: expectedId }) {
+    if (expectedId && expectedId !== videoId()) return;
     // Back where the burst started: the playing MediaSource is already right.
     if (currentSpeed === fromSpeed) return;
     // Stop any previous Web Audio engine immediately so it doesn't keep playing
@@ -260,7 +281,7 @@ export function createSpeedController({
     }
   }
 
-  function setSpeed(speed, { immediate = false, shouldNotify = true } = {}) {
+  function setSpeed(speed, { immediate = false, shouldNotify = true, reload = true, persist = true } = {}) {
     speed = Number(speed);
     if (!isSupportedSpeed(speed)) return false;
     if (speed === currentSpeed) return true;
@@ -273,10 +294,14 @@ export function createSpeedController({
       return false;
     }
     const previousSpeed = currentSpeed;
+    lastVideoId = videoId() || lastVideoId;
     currentSpeed = speed;
-    if (configWrite) configWrite('defaultPlaybackSpeed', String(speed));
+    if (persist && configWrite) configWrite('defaultPlaybackSpeed', String(speed));
     if (shouldNotify) notify(`Playback speed ${speed}×`);
-    scheduleReload(pending ? pending.fromSpeed : previousSpeed, immediate);
+    if (reload) scheduleReload(
+      pending && pending.videoId === videoId() ? pending.fromSpeed : previousSpeed,
+      immediate
+    );
     return true;
   }
 
@@ -302,12 +327,13 @@ export function createSpeedController({
 
   function onRateRequest() {}
 
-  function onError(_err) {
+  function onError(error) {
+    lastError = error && (error.name + ': ' + error.message);
     if (currentSpeed !== 1) {
       const previousSpeed = currentSpeed;
       currentSpeed = 1;
       notify('Playback speed not available for this video');
-      scheduleReload(pending ? pending.fromSpeed : previousSpeed);
+      scheduleReload(pending && pending.videoId === videoId() ? pending.fromSpeed : previousSpeed);
     }
   }
 
@@ -320,6 +346,12 @@ export function createSpeedController({
         activeSink.listener
       );
     activeSink = null;
+  }
+
+  function destroy() {
+    if (pending) win.clearTimeout(pending.timer);
+    pending = null;
+    releaseAudioSink();
   }
 
   function createAudioSink({ speed, element }) {
@@ -362,6 +394,10 @@ export function createSpeedController({
   }
 
   return {
+    diagnostic: () => ({ speed: currentSpeed, videoId: lastVideoId, lastError,
+      audio: activeSink ? { codec: activeSink.engine.cfg && activeSink.engine.cfg.codec,
+        contextState: activeSink.engine.ctx.state, baseLatency: activeSink.engine.ctx.baseLatency,
+        outputLatency: activeSink.engine.ctx.outputLatency } : null }),
     activeEngine: () => (activeSink ? activeSink.engine : null),
     lastReloadAt: () => lastReloadAt,
     isSupported,
@@ -374,6 +410,7 @@ export function createSpeedController({
     onError,
     createAudioSink,
     releaseAudioSink,
+    destroy,
     handleKey
   };
 }
@@ -405,16 +442,9 @@ export function installSpeedFeature(
     onNativeAudio: ctrl.releaseAudioSink
   });
 
-  const restoreMenu = enableNativeSpeedMenu(win);
-  const restoreRateHook = hookRateAssignments(win, ctrl);
-  const restoreButton = installSpeedButtonPatch(
-    win,
-    () => cfgRead('enablePlaybackSpeed') !== false
-  );
-  const bindTimer =
-    typeof win.setInterval === 'function'
-      ? win.setInterval(() => bindPlayerRate(getPlayer(), ctrl), 1000)
-      : null;
+  // The adopted speed row calls ctrl.setSpeed for explicit user choices.
+  // YouTube's internal setPlaybackRate(1) during navigation is not user input
+  // and must never overwrite defaultPlaybackSpeed or create a reload loop.
 
   const keyHandler = (evt) => ctrl.handleKey(evt);
   win.document.addEventListener('keydown', keyHandler, true);
@@ -425,10 +455,7 @@ export function installSpeedFeature(
     controller: ctrl,
     uninstall() {
       mseHook.uninstall();
-      restoreMenu();
-      restoreRateHook();
-      restoreButton();
-      if (bindTimer !== null) win.clearInterval(bindTimer);
+      ctrl.destroy();
       win.document.removeEventListener('keydown', keyHandler, true);
       win.document.removeEventListener('keypress', keyHandler, true);
       win.document.removeEventListener('keyup', keyHandler, true);
