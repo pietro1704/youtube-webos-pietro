@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -72,7 +72,7 @@ function boot() {
     enableReturnYouTubeDislike: false, enableLegacyEmojiFix: false,
     upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false
   }));
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
   // The real page does: setMessage({...}) -> yt.setMsg(...) / ytcfg.msgs
   win.ytcfg = win.ytcfg || {};
   win.ytcfg.msgs = {

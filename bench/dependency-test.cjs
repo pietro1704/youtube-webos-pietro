@@ -5,7 +5,7 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 
@@ -30,7 +30,7 @@ function boot(cfg) {
     enableSponsorBlock: false, enableReturnYouTubeDislike: false,
     upgradeThumbnails: false, enableAutoLogin: false, dearrowMode: 'off'
   }, cfg)));
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, opened, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }

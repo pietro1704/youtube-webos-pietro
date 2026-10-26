@@ -5,10 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const {
-  applyChrome38Downgrade,
+  applyBundleEnvironment,
   UA,
   setUserAgent,
-} = require('./chrome38-env.cjs');
+} = require('./bundle-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath =
@@ -85,7 +85,7 @@ function boot(preference, available) {
   player.isInline = () => false;
   player.playVideo = () => {};
   player.pauseVideo = () => {};
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { dom, win, calls, newVideo(id) { videoId = id; current = 'medium'; } };
 }

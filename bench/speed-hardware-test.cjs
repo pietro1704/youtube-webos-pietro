@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -124,7 +124,7 @@ function boot(honours) {
     mediaSource.addSourceBuffer('video/mp4; codecs="avc1.4d401f"');
   };
 
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
   // This harness exercises the WebCodecs-capable TV path with the ES5 bundle.
   // Such TVs have native Reflect.construct; the separate legacy tests retain
   // the full Chrome 38 downgrade without advertising WebCodecs support.

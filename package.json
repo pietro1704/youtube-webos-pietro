@@ -23,7 +23,8 @@
     "prepare": "husky",
     "lint": "eslint",
     "type-check": "tsc -b",
-    "prettier-check": "prettier --ignore-path .prettierignore --check ."
+    "prettier-check": "prettier --ignore-path .prettierignore --check .",
+    "test:modern": "node bench/run-modern-tests.cjs"
   },
   "repository": "github:webosbrew/youtube-webos",
   "license": "GPL-3.0-only",

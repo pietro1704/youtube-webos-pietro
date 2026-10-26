@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
@@ -64,7 +64,7 @@ function boot() {
     upgradeThumbnails: false,
     enableAutoLogin: false
   }));
-  applyChrome38Downgrade(win);
+  applyBundleEnvironment(win);
   win.ytcfg = {
     msgs: {
       PLAYBACK_SPEED_UNAVAILABLE: 'Not available on this device',
