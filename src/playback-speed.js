@@ -31,6 +31,7 @@ import {
   SYNTHETIC_KEY_FLAG
 } from './utils.js';
 import { installSpeedFeature } from './speed/controller.js';
+import { findNativeSpeedRow, nativeSpeedSelection, paintNativeSpeedOptions } from './speed/native-menu.js';
 
 /** Matches the rates YouTube itself offers, so the OSD reads familiarly. */
 export const SPEED_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -385,6 +386,26 @@ const SPEED_ROW_FLAG = 'data-ytaf-speed-row';
 let settingsObserver = null;
 let adoptedMarkers = null;
 
+function configuredMessage(key) {
+  let messages;
+  try {
+    messages = window.ytcfg && typeof window.ytcfg.get === 'function' && window.ytcfg.get('msgs');
+  } catch { /* YouTube may replace its config provider during navigation. */ }
+  const sources = [window.ytcfg && window.ytcfg.msgs, messages,
+    window.yt && window.yt.msgs_, window.yt && window.yt.msgs,
+    window.yt && window.yt.config_ && window.yt.config_.msgs];
+  for (const source of sources) {
+    if (source && typeof source[key] === 'string') return source[key];
+  }
+  return null;
+}
+
+function paintNativeMenu() {
+  if (!configRead('enablePlaybackSpeed') || !isWatchPage()) return;
+  paintNativeSpeedOptions(document, getSpeed(), configuredMessage('VIDEO_SPEED'),
+    configuredMessage('VIDEO_SPEED_NORMAL'));
+}
+
 /**
  * The localized "Not available on this device" string.
  *
@@ -520,7 +541,7 @@ function expectedSublabel() {
 
 /** Re-apply everything YouTube may have stomped, without re-detecting. */
 function reassertSpeedRow(row) {
-  if (adoptedMarkers) {
+  if (adoptedMarkers && !row.hasAttribute('data-ytaf-native-speed-row')) {
     for (let i = 0; i < adoptedMarkers.length; i++)
       row.classList.add(adoptedMarkers[i]);
   }
@@ -543,7 +564,13 @@ function adoptSpeedRow() {
   const rows = document.querySelectorAll(MENU_ITEM_SELECTOR);
   if (!rows.length) return false;
 
-  const found = findDisabledRow(Array.prototype.slice.call(rows));
+  const list = Array.prototype.slice.call(rows);
+  let found = findDisabledRow(list);
+  const native = findNativeSpeedRow(list, configuredMessage('VIDEO_SPEED'));
+  if (!found && native) {
+    found = { row: native, markers: [] };
+    native.setAttribute('data-ytaf-native-speed-row', '1');
+  }
   if (!found) return false;
 
   const { row, markers } = found;
@@ -566,10 +593,12 @@ function onSettingsKey(evt) {
   const isEnter = evt.key === 'Enter' || evt.keyCode === 13;
   const isRight = evt.key === 'ArrowRight' || evt.keyCode === 39;
   const isLeft = evt.key === 'ArrowLeft' || evt.keyCode === 37;
+  if (isEnter && onNativeSpeedSelection(evt)) return;
   if (!isEnter && !isRight && !isLeft) return;
 
   const row = inSpeedRow(document.activeElement);
   if (!row) return;
+  if (row.hasAttribute('data-ytaf-native-speed-row')) return;
 
   evt.preventDefault();
   if (evt.stopImmediatePropagation) evt.stopImmediatePropagation();
@@ -586,6 +615,27 @@ function onSettingsKey(evt) {
   }
 }
 
+function onNativeSpeedSelection(evt) {
+  if (evt[SYNTHETIC_KEY_FLAG] || !configRead('enablePlaybackSpeed') || !isWatchPage()) return false;
+  const title = configuredMessage('VIDEO_SPEED');
+  const normal = configuredMessage('VIDEO_SPEED_NORMAL');
+  let rate = nativeSpeedSelection(evt.target, title, normal);
+  if (rate === null && evt.type === 'keydown') {
+    const active = document.activeElement;
+    const scope = (evt.target.closest && evt.target.closest('.AmQJbe, [role="dialog"]')) ||
+      (active && active.closest('.AmQJbe, [role="dialog"]'));
+    if (!scope || scope.contains(active)) rate = nativeSpeedSelection(active, title, normal);
+    if (rate === null) {
+      const focused = (scope || document).querySelector('ytlr-button[role="checkbox"].zylon-focus, [role="menuitemradio"].zylon-focus');
+      rate = nativeSpeedSelection(focused, title, normal);
+    }
+  }
+  if (rate === null) return false;
+  setSpeed(rate, { notify: false });
+  paintNativeMenu();
+  return true;
+}
+
 /**
  * Watch the settings menu for re-renders. Scoped to the menu container rather
  * than body: YouTube rebuilds these rows with incremental-dom, which would wipe
@@ -597,6 +647,7 @@ function watchSettingsMenu() {
     document.querySelector('.AmQJbe') || document.querySelector('ytlr-app');
   if (!host || settingsObserver) return;
   settingsObserver = new MutationObserver(() => {
+    paintNativeMenu();
     // incremental-dom REUSES these nodes: it rewrites textContent and className
     // in place, so the row element survives with our flag attached while the
     // sublabel has been stomped back to "Not available on this device" and the
@@ -609,7 +660,8 @@ function watchSettingsMenu() {
     }
     if (sublabelText(row) !== expectedSublabel()) reassertSpeedRow(row);
   });
-  settingsObserver.observe(host, { childList: true, subtree: true });
+  settingsObserver.observe(host, { childList: true, subtree: true, attributes: true,
+    attributeFilter: ['aria-checked'] });
 }
 
 function stopWatchingSettingsMenu() {
@@ -642,6 +694,7 @@ export function initPlaybackSpeed() {
 
   window.addEventListener('ytaf-page-update', onPageUpdate);
   document.addEventListener('keydown', onSettingsKey, true);
+  document.addEventListener('click', onNativeSpeedSelection, true);
   configAddChangeListener('defaultPlaybackSpeed', (evt) => {
     const next = clamp(Number(evt.detail.newValue));
     if (Math.abs(next - desiredSpeed) <= 0.001) return;
@@ -649,6 +702,8 @@ export function initPlaybackSpeed() {
     const hardware = getHardwareController();
     if (hardware) {
       hardware.setSpeed(next, { shouldNotify: false, reload: isWatchPage(), persist: false });
+      paintNativeMenu();
+      adoptSpeedRow();
       return;
     }
     bindVideo();
