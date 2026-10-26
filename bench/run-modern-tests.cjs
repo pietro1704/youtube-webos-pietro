@@ -7,6 +7,7 @@ const suites = [
   'build-info-test.cjs',
   'queue-ui-test.cjs',
   'captions-ui-test.cjs',
+  'navigation-ui-test.cjs',
   'spatnav-correctness.cjs',
   'playback-defaults-test.cjs',
   'native-speed-menu-test.cjs',
