@@ -6,7 +6,7 @@ const fixture = () => ({ items: [{ guideSectionRenderer: { items: [entry('FEwhat
 const ids = data => data.items[0].guideSectionRenderer.items.map(item => item.guideEntryRenderer?.navigationEndpoint?.browseEndpoint?.browseId).filter(Boolean);
 function configure(win, calls, account = 'A') {
   const native = function () {}; native.instance = { resolveCommand: command => calls.push(command) }; win._yttv = { native };
-  win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'AUTHENTICATED_IDENTITY_TYPE_ACCOUNT', accountId: account } }));
+  win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: account, identityCredentials: {} } }));
 }
 (async () => {
   const { win } = boot({ enableSidebarCustomization: true, startInSubscriptions: true, enableLegacyEmojiFix: false, dearrowMode: 'off' });
