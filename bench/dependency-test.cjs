@@ -83,6 +83,12 @@ setTimeout(() => {
     t('ads filtered with Ad Blocking on', items.length === 1, 'items ' + items.length);
     const txt = shelfOf(out).title.runs.map((r) => r.text).join('');
     t('emoji fix also runs with Ad Blocking on', /\u200B\uD83D\uDE00\u200C/.test(txt));
+    const small = win.JSON.parse('{"adSlots":[1],"streamingData":{}}');
+    t('uBlock rules remove ads from small player payloads',
+      !('adSlots' in small) && !!small.streamingData);
+    const shorts = win.JSON.parse('{"entries":[{"command":{"reelWatchEndpoint":{"adClientParams":{"isAd":true}}}},{"videoId":"organic"}]}');
+    t('uBlock rules remove Shorts advertisements before schema/size checks',
+      shorts.entries.length === 1 && shorts.entries[0].videoId === 'organic');
   }
 
   // --- Tracking Block is gated on Ad Blocking ---
