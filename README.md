@@ -1,6 +1,17 @@
-# youtube-webos
+# youtube-webos-pietro
 
-An upgraded fork of webosbrew's youtube-webos with extended features and fixes.
+Fork pessoal baseado no NicholasBly/youtube-webos 0.8.4, mantendo a experiência
+oficial do YouTube TV e os recursos do upstream.
+
+## Recursos deste fork
+
+- DeArrow configurável: desligado, somente títulos ou títulos + miniaturas.
+- Velocidade padrão persistente de 0,25x a 2x.
+- Qualidade padrão persistente: automática, 720p, 1080p, 1440p ou 2160p/4K,
+  com fallback para a melhor faixa disponível abaixo da preferência.
+- Mods locais versionados e registrados como módulos empacotados; nenhum
+  JavaScript remoto mutável é executado.
+- Compatibilidade de configuração com o antigo `Force Max Quality`.
 
 ## Added Features
 - Full support for webOS 3, 4, 5, 6, 22, 23, 24, and 25 (2016 and newer LG TVs) (webOS 1 and 2 currently not supported)

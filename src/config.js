@@ -1,3 +1,5 @@
+import { playbackSpeedModes, videoQualityModes } from './playback-preferences.js';
+
 const CONFIG_KEY = 'ytaf-configuration';
 
 export const segmentTypes = {
@@ -36,6 +38,12 @@ export const logoStyles = {
 export const thumbnailQualityModes = {
   safe: 'Original',
   eager: 'Fast'
+};
+
+export const dearrowModes = {
+  off: 'Off',
+  titles: 'Titles',
+  titles_thumbnails: 'Titles + thumbnails'
 };
 
 export const shortcutActions = {
@@ -135,8 +143,11 @@ const configOptions = new Map([
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
+  ['preferredVideoQuality', { default: 'auto', desc: 'Default Quality', values: Object.keys(videoQualityModes) }],
+  ['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
+  ['defaultPlaybackSpeed', { default: '1', desc: 'Default Speed', values: Object.keys(playbackSpeedModes) }],
+  ['dearrowMode', { default: 'titles_thumbnails', desc: 'DeArrow', values: Object.keys(dearrowModes) }],
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
-  //['enablePlaybackSpeed', { default: true, desc: 'Playback Speed Control' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }]
 ]);
 
@@ -154,7 +165,8 @@ for (let i = 0; i < 10; i++) {
     configOptions.set(`shortcut_key_${color}`, { default: def, desc: `${color.charAt(0).toUpperCase() + color.slice(1)} Button Action` });
 });
 
-for (const [key, value] of Object.entries(segmentTypes)) {
+for (const key of Object.keys(segmentTypes)) {
+  const value = segmentTypes[key];
   configOptions.set(`${key}Color`, { default: value.color, desc: `Color for ${value.name}` });
 }
 
@@ -173,7 +185,26 @@ function loadStoredConfig() {
 // reference to this object via the configGetAll() snapshot. Reassigning
 // localConfig (e.g. for a future "reset to defaults") would silently desync
 // those holders. Use Object.assign(localConfig, defaultConfig) to reset.
-let localConfig = Object.assign({}, defaultConfig, loadStoredConfig() || {});
+const storedConfig = loadStoredConfig() || {};
+// Preserve the old boolean setting as a one-time migration to the closest new
+// explicit choice. The legacy key remains readable for backwards compatibility.
+if (storedConfig.forceHighResVideo === true && storedConfig.preferredVideoQuality === undefined) {
+  storedConfig.preferredVideoQuality = 'hd2160';
+}
+
+function normalizeOptionValue(option, value) {
+  if (option.values && option.values.indexOf(value) === -1) return option.default;
+  return value;
+}
+
+let localConfig = Object.assign({}, defaultConfig);
+for (const [key, option] of configOptions) {
+  // Object.hasOwn is unavailable on the legacy webOS target.
+  // eslint-disable-next-line prefer-object-has-own
+  if (Object.prototype.hasOwnProperty.call(storedConfig, key)) {
+    localConfig[key] = normalizeOptionValue(option, storedConfig[key]);
+  }
+}
 
 // Debounce localStorage writes — rapid input (e.g. color picker drag) was
 // stringifying the entire ~50-key config object on every event.
@@ -213,6 +244,7 @@ const DEBUG = false;
 
 export function configWrite(key, value) {
   if (!configExists(key)) throw new Error('tried to write unknown config key: ' + key);
+  value = normalizeOptionValue(configOptions.get(key), value);
   const oldValue = localConfig[key];
   if (oldValue === value) return;
 

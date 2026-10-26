@@ -301,13 +301,16 @@ function upgradeEntry(entry, proven) {
   // upward in safe mode once maxres is confirmed, downward in eager mode if the
   // gamble missed. Both need the entry tracked so the answer can be written back.
   const unresolved = verified === undefined && (useful > ceiling || target > ceilingBeforeMode);
-  if (unresolved) scheduleProbe(videoId);
+  const probeQueued = unresolved ? scheduleProbe(videoId) : false;
 
   // Above the guarantee we are relying on proof, and that proof is per-family:
   // a probe verifies the exact URL it fetched. At or below it we are relying on
   // hqdefault always existing, which is a `/vi/` guarantee only.
   const next = buildUrl(videoId, QUALITY_NAMES[target], target <= GUARANTEED_RANK);
-  if (next === url) return 0;
+  // Safe mode often keeps hqdefault in place while maxres is still unknown.
+  // That is still work: the new probe must be drained even though the URL did
+  // not change synchronously.
+  if (next === url) return probeQueued ? 1 : 0;
   entry.url = next;
   if (unresolved) trackPending(videoId, entry, ceilingBeforeMode);
   return 1;
@@ -712,16 +715,17 @@ function imageExists(url) {
 }
 
 function scheduleProbe(videoId) {
-  if (!enabled) return;
-  if (qualityCache.has(videoId)) return;
+  if (!enabled) return false;
+  if (qualityCache.has(videoId)) return false;
   // One attempt per video per session, whatever the outcome. A video that was
   // enqueued and never reached, or probed and failed, must not come back: the
   // same tiles stream past on every scroll, and re-queueing them was what
   // turned a settled surface into a permanent trickle of requests.
-  if (probeAttempted.has(videoId)) return;
-  if (probeAttempted.size >= PROBE_ATTEMPT_LIMIT) return;
+  if (probeAttempted.has(videoId)) return false;
+  if (probeAttempted.size >= PROBE_ATTEMPT_LIMIT) return false;
   probeAttempted.add(videoId);
   probeQueue.set(videoId, true);
+  return true;
 }
 
 /** Walk the ladder high-to-low, stopping at the first rung that exists. */
@@ -732,6 +736,8 @@ async function resolveQuality(videoId, onScreen) {
   const check = onScreen ? imageExists : headExists;
   for (let i = 0; i < PROBE_LADDER.length; i++) {
     const rank = PROBE_LADDER[i];
+    // Ladder order is significant: stop at the first verified quality.
+    // eslint-disable-next-line no-await-in-loop
     if (await check(buildUrl(videoId, QUALITY_NAMES[rank]))) return rank;
     if (!enabled) break;
   }

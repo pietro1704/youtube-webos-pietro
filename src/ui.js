@@ -1,13 +1,12 @@
 /*global navigate*/
 import './spatial-navigation-polyfill.js';
-import { logoStyles, thumbnailQualityModes, videoCodecModes } from './config.js';
+import { dearrowModes, logoStyles, thumbnailQualityModes, videoCodecModes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
+import { playbackSpeedModes, videoQualityModes } from './playback-preferences.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
-import { initVideoQuality } from './video-quality.js';
 import { initLogoStyle } from './logo-style.js';
-// import { initPlaybackSpeed, stepSpeed, resetSpeed } from './playback-speed.js';
 import sponsorBlockUI from './Sponsorblock-UI.js';
 import { sendKey, REMOTE_KEYS, COLOR_CODE_MAP, isGuestMode, isWatchPage, isShortsPage, isSearchPage, SELECTORS, getVideo } from './utils.js';
 import { syncAdblockHook, initTrackingBlock, destroyTrackingBlock } from './adblock.js';
@@ -327,6 +326,9 @@ function createAlignedCycleControl(configKey, displayMap) {
 
 const createLogoControl = () => createAlignedCycleControl('logoStyle', logoStyles);
 const createVideoCodecControl = () => createAlignedCycleControl('forceVideoCodec', videoCodecModes);
+const createPlaybackSpeedControl = () => createAlignedCycleControl('defaultPlaybackSpeed', playbackSpeedModes);
+const createVideoQualityControl = () => createAlignedCycleControl('preferredVideoQuality', videoQualityModes);
+const createDeArrowControl = () => createAlignedCycleControl('dearrowMode', dearrowModes);
 function createThumbnailQualityControl() {
   const control = createAlignedCycleControl('thumbnailQualityMode', thumbnailQualityModes);
   // The strategy only means anything while the feature it tunes is on. Greyed
@@ -605,12 +607,12 @@ function createOptionsPanel() {
   updateDependencyState();
 
   pageMain.appendChild(createSection('Video Player',
-  [createConfigCheckbox('forceHighResVideo'),
-  //createConfigCheckbox('enablePlaybackSpeed'),
+  [createPlaybackSpeedControl(),
+  createVideoQualityControl(),
   createVideoCodecControl(),
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
-  pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
   elmContainer.appendChild(pageMain);
 
   // --- Pages 2-4: built off the critical path ---
@@ -1498,9 +1500,7 @@ if (!menuKeyExists) {
 
 // --- Start-up ---
 initGlobalStyles();
-initVideoQuality();
 initLogoStyle();
-// initPlaybackSpeed();
 
 // Initial apply (will skip UI elements if they don't exist yet, but handle global styles)
 applyOledMode(configRead('enableOledCareMode'));
@@ -1516,7 +1516,7 @@ configAddChangeListener('enableAdBlock', () => {
 });
 
 function syncTrackingBlock() {
-  if (configRead('enableTrackingBlock')) initTrackingBlock();
+  if (configRead('enableAdBlock') && configRead('enableTrackingBlock')) initTrackingBlock();
   else destroyTrackingBlock();
 }
 

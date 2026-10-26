@@ -1018,7 +1018,7 @@ export function destroyAdblock() {
 
 initAdblock();
 
-if (cfgSnapshot[CONFIG_KEYS.TRACKING]) {
+if (cfgSnapshot[CONFIG_KEYS.ADBLOCK] && cfgSnapshot[CONFIG_KEYS.TRACKING]) {
   try {
     initTrackingBlock();
   } catch (e) {

@@ -3,6 +3,8 @@
 cd "$(dirname "$0")/.."
 LABEL="${1:-run}"
 echo "==================== $LABEL ===================="
+echo "--- playback preferences ---"; node bench/playback-preferences-test.mjs
+echo "--- DeArrow behaviour ---"; node bench/dearrow-test.mjs
 npx webpack --mode=production > /tmp/leg.log 2>&1
 E=$(grep -c "^ERROR" /tmp/leg.log); [ "$E" != "0" ] && { echo "LEGACY BUILD ERRORS: $E"; grep "^ERROR" /tmp/leg.log | head -5; }
 echo "--- polyfill conformance ---";  node bench/polyfill-conformance.cjs 2>&1 | tail -2
@@ -16,6 +18,9 @@ node bench/modern-smoke.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
 npx webpack --mode=production > /dev/null 2>&1   # back to legacy for the rest
 echo "--- new features (logo/live/guide/panel) ---"; node bench/new-features-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
 echo "--- feature dependencies ---";        node bench/dependency-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
+echo "--- playback speed ---"; node bench/speed-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
+echo "--- playback settings row ---"; node bench/settings-speed-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
+echo "--- video quality preference ---"; node bench/video-quality-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1
 echo "--- thumbnail / dislike hot paths ---"; node bench/module-hotpath-bench.cjs dist/webOSUserScripts/userScript.js 2>&1 | grep -E "getBoundingClientRect|closest\(\)"
 echo "--- dislike fetch/render timing ---";   node bench/dislike-timing-test.cjs dist/webOSUserScripts/userScript.js legacy 2>&1 | tail -1
 echo "--- thumbnail / dislike behaviour ---";  node bench/module-behaviour-test.cjs dist/webOSUserScripts/userScript.js 2>&1 | tail -1

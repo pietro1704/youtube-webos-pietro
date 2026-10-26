@@ -28,7 +28,7 @@ function boot(cfg) {
   win.localStorage.setItem('ytaf-configuration', NS(Object.assign({
     enableAdBlock: true, enableTrackingBlock: false, enableLegacyEmojiFix: true,
     enableSponsorBlock: false, enableReturnYouTubeDislike: false,
-    upgradeThumbnails: false, enableAutoLogin: false
+    upgradeThumbnails: false, enableAutoLogin: false, dearrowMode: 'off'
   }, cfg)));
   applyChrome38Downgrade(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));

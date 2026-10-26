@@ -20,7 +20,8 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run build
+      - run: npm test
+      - run: npm run build:modern
       - run: npm run package
 
       - name: Upload artifact
@@ -28,4 +29,4 @@ jobs:
         with:
           name: youtube_adfree_ipk
           path: |
-            ${{github.workspace}}/youtube.leanback.v4_*_all.ipk
+            ${{github.workspace}}/dist/youtube.leanback.v4_*_all.ipk
