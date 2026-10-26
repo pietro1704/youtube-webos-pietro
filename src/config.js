@@ -201,7 +201,6 @@ function normalizeOptionValue(option, value) {
 let localConfig = Object.assign({}, defaultConfig);
 for (const [key, option] of configOptions) {
   // Object.hasOwn is unavailable on the legacy webOS target.
-  // eslint-disable-next-line prefer-object-has-own
   if (Object.prototype.hasOwnProperty.call(storedConfig, key)) {
     localConfig[key] = normalizeOptionValue(option, storedConfig[key]);
   }

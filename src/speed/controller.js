@@ -104,7 +104,6 @@ export function hookRateAssignments(win, controller, now = () => Date.now()) {
       const plain =
         Object.getPrototypeOf(this) === proto &&
         // Object.hasOwn is unavailable on the legacy webOS target.
-        // eslint-disable-next-line prefer-object-has-own
         !Object.prototype.hasOwnProperty.call(this, 'constructor');
       Object.defineProperty(this, 'setPlaybackRate', {
         value:

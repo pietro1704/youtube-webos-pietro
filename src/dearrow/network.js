@@ -42,7 +42,8 @@ export function createDeArrowClient(options = {}) {
   }
 
   function drain() {
-    while (!destroyed && active.size < maxConcurrent && queue.length > 0) {
+    if (destroyed) return;
+    while (active.size < maxConcurrent && queue.length > 0) {
       const entry = queue.shift();
       active.add(entry);
       entry.controller = Abort ? new Abort() : null;

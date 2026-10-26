@@ -117,7 +117,7 @@
   function navigate(dir) {
     const searchOrigin = findSearchOrigin();
     let eventTarget = searchOrigin;
-    let elementFromPosition = null;
+    let elementFromPosition;
 
     if (startingPoint) {
       elementFromPosition = document.elementFromPoint(startingPoint.x, startingPoint.y) ?? document.body;
@@ -132,11 +132,11 @@
       eventTarget = document.body || document.documentElement;
     }
 
-    let container = null;
+    let container;
     if ((isContainer(eventTarget) || eventTarget.nodeName === 'BODY') && eventTarget.nodeName !== 'INPUT') {
       if (eventTarget.nodeName === 'IFRAME') eventTarget = eventTarget.contentDocument.documentElement;
       container = eventTarget;
-      let bestInsideCandidate = null;
+      let bestInsideCandidate;
 
       if ((document.activeElement === searchOrigin) || (document.activeElement === document.body && searchOrigin === document.documentElement)) {
         const action = getCSSSpatNavAction(eventTarget);
@@ -149,7 +149,7 @@
           if (focusingController(bestInsideCandidate, dir) || scrollingController(eventTarget, dir)) return;
         }
       } else {
-        container = container.getSpatialNavigationContainer();
+        container.getSpatialNavigationContainer();
       }
     }
 
@@ -161,7 +161,7 @@
     }
 
     const containerAction = getCSSSpatNavAction(container);
-    if (containerAction === 'scroll' && scrollingController(container, dir)) return;
+    if (containerAction === 'scroll') scrollingController(container, dir);
     else if (containerAction === 'focus') navigateChain(eventTarget, container, parentContainer, dir, 'all');
     else if (containerAction === 'auto') navigateChain(eventTarget, container, parentContainer, dir, 'visible');
   }

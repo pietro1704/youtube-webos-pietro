@@ -19,7 +19,7 @@ const label = process.argv[4] || (legacy ? 'legacy' : 'modern');
 
 const vc = new VirtualConsole(); // swallow the bundle's console noise
 const dom = new JSDOM(
-  `<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>`,
+  '<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
   { runScripts: 'outside-only', url: 'https://www.youtube.com/tv', virtualConsole: vc,
     pretendToBeVisual: true }
 );

@@ -9,7 +9,8 @@
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { applyChrome38Downgrade, sealDomCollectionPrototypes, UA, setUserAgent } = require('./chrome38-env.cjs');
+const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs');
+const { sealDomCollectionPrototypes } = require('./chrome38-env.cjs');
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 
@@ -37,7 +38,7 @@ win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
   enableAdBlock: true, enableLegacyEmojiFix: false, enableSponsorBlock: false,
   enableReturnYouTubeDislike: false, upgradeThumbnails: false, enableAutoLogin: false
 }));
-applyChrome38Downgrade(win);
+applyBundleEnvironment(win);
 // Worst case: the polyfill CANNOT install an iterator on these prototypes.
 // Navigation must work anyway.
 const sealed = sealDomCollectionPrototypes(win);

@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+
 /**
  * perf_mon.js — YTAF Engine Diagnostics
  * =====================================================================
@@ -140,7 +140,6 @@ export {};
 
   var BOOT = now();
   var nativeSetTimeout = window.setTimeout.bind(window);
-  var nativeClearTimeout = window.clearTimeout.bind(window);
   var nativeSetInterval = window.setInterval.bind(window);
   var nativeClearInterval = window.clearInterval.bind(window);
   var nativeRaf = window.requestAnimationFrame
@@ -302,7 +301,7 @@ export {};
     var src;
     try {
       src = Function.prototype.toString.call(fn);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
     if (!src || src.length > 20000) return null;
@@ -325,7 +324,7 @@ export {};
         spins++;
       }
       return t1 - t0;
-    } catch (e) {
+    } catch (_e) {
       return 0;
     }
   })();
@@ -576,7 +575,7 @@ export {};
     try {
       Error.stackTraceLimit = 12;
       return new Error().stack || '';
-    } catch (err) {
+    } catch (_err) {
       return '';
     } finally {
       Error.stackTraceLimit = prev;
@@ -828,14 +827,6 @@ export {};
   //    must not depend on the mod's own eventing to observe the mod — so
   //    we derive it independently and use the event only as a trigger.
   // ===================================================================
-
-  var PAGES = {
-    watch: 'WATCH',
-    shorts: 'SHORTS',
-    search: 'SEARCH',
-    account: 'ACCOUNT',
-    home: 'HOME'
-  };
 
   function detectPage() {
     var cl = document.body ? document.body.className || '' : '';
@@ -1128,7 +1119,7 @@ export {};
     safe(function () {
       if (!navigator || typeof navigator.sendBeacon !== 'function') return;
       var nativeBeacon = navigator.sendBeacon;
-      navigator.sendBeacon = function (url, data) {
+      navigator.sendBeacon = function (url, _data) {
         var name = classifyUrl(String(url));
         var ch = channel(name);
         ch.count++;
@@ -1200,7 +1191,7 @@ export {};
         try {
           this.__perfMethod = method;
           this.__perfUrl = url;
-        } catch (e) {
+        } catch (_e) {
           /* frozen instance */
         }
         return origOpen.apply(this, arguments);
@@ -1222,7 +1213,7 @@ export {};
         };
         try {
           this.addEventListener('loadend', finish);
-        } catch (e) {
+        } catch (_e) {
           var prev = this.onreadystatechange;
           this.onreadystatechange = function () {
             if (self.readyState === 4) finish();
@@ -1518,7 +1509,7 @@ export {};
       var wrapQuery = function (proto, name, counter, meter) {
         if (!proto || typeof proto[name] !== 'function') return;
         var orig = proto[name];
-        proto[name] = function (sel) {
+        proto[name] = function (_sel) {
           counter.hit();
           if (!meter) return orig.apply(this, arguments);
           var t0 = now();
@@ -1592,7 +1583,7 @@ export {};
       var key = listenerKey(type, options);
       var wrapped = map[key];
       if (!wrapped) {
-        wrapped = map[key] = function (evt) {
+        wrapped = map[key] = function (_evt) {
           STATS.events.dispatched.hit();
           var t0 = now();
           try {
@@ -1677,7 +1668,7 @@ export {};
         };
         try {
           Object.defineProperty(wrapper, 'name', { value: name, configurable: true });
-        } catch (e) {
+        } catch (_e) {
           /* older engines */
         }
         originCache.set(wrapper, origin);
@@ -1722,21 +1713,21 @@ export {};
   function q(sel) {
     try {
       return nQS ? nQS.call(document, sel) : document.querySelector(sel);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
   function qa(sel) {
     try {
       return nQSA ? nQSA.call(document, sel) : document.querySelectorAll(sel);
-    } catch (e) {
+    } catch (_e) {
       return [];
     }
   }
   function byId(id) {
     try {
       return nGetById ? nGetById.call(document, id) : document.getElementById(id);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -1888,7 +1879,7 @@ export {};
         return n;
       }
       for (var i = 0; i < els.length; i++) if (isUpgradedTile(els[i])) n++;
-    } catch (e) {
+    } catch (_e) {
       return 0;
     }
     return n;
@@ -1915,7 +1906,7 @@ export {};
       v.addEventListener('timeupdate', function () {
         videoTicks.hit();
       });
-    } catch (e) {
+    } catch (_e) {
       /* ignore */
     }
     suppressListenerWrap = false;
@@ -1944,12 +1935,12 @@ export {};
       for (var j = 0; j < roots.length && j < 400; j++) {
         try {
           shadow += roots[j].querySelectorAll('*').length;
-        } catch (e) {
+        } catch (_e) {
           /* closed root */
         }
       }
       STATS.shadowRoots = roots.length;
-    } catch (e) {
+    } catch (_e) {
       /* ignore */
     }
     STATS.domNodesLight = light;

@@ -4,6 +4,7 @@ const path = require('node:path');
 const bundle = path.resolve(process.argv[2] || 'dist/webOSUserScripts/userScript.js');
 const suites = [
   'modern-smoke.cjs',
+  'spatnav-correctness.cjs',
   'playback-defaults-test.cjs',
   'native-speed-menu-test.cjs',
   'speed-hardware-test.cjs',

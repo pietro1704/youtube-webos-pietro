@@ -11,7 +11,6 @@
  * These cases run the built bundle with a deliberately slow and a deliberately
  * failing RYD API.
  */
-/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');

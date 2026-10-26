@@ -33,7 +33,7 @@ if (!win.cancelAnimationFrame) win.cancelAnimationFrame = (i) => win.clearTimeou
 
 // Count every layout read, before the bundle can capture a reference.
 let rects = 0, styles = 0;
-const realRect = win.Element.prototype.getBoundingClientRect;
+const _realRect = win.Element.prototype.getBoundingClientRect;
 win.Element.prototype.getBoundingClientRect = function () {
   rects++;
   return { top: 0, left: 0, right: 100, bottom: 40, width: 100, height: 40, x: 0, y: 0 };
@@ -102,7 +102,7 @@ setTimeout(() => {
   console.log(`     getBoundingClientRect calls: ${focusRects}   (${(focusRects / FOCUS_MOVES).toFixed(2)} per focus change)`);
   console.log(`   same ${FOCUS_MOVES} focus moves with the panel open (armed):`);
   console.log(`     getBoundingClientRect calls: ${focusRectsArmed}`);
-  console.log(`\nB. one navigate('down') across a 50-row settings panel:`);
+  console.log('\nB. one navigate(\'down\') across a 50-row settings panel:');
   console.log(`     getBoundingClientRect calls: ${navRects}`);
   console.log(`     getComputedStyle calls:      ${navStyles}`);
   console.log(`\nJSON:${JSON.stringify({ focusRects, focusRectsArmed, navRects, navStyles })}`);

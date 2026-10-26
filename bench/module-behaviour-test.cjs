@@ -3,7 +3,6 @@
  * changes: the tile tracker must still find the same elements, and the dislike
  * panel must still be detected by focus and navigate the same way.
  */
-/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');

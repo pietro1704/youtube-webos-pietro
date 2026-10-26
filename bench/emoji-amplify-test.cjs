@@ -66,7 +66,7 @@ function run(emojiOn, withEmojiText) {
       for (let t = 0; t < TICKS; t++) {
         const s = titles[t % titles.length];
         const tn = s.firstChild;
-        if (tn && tn.nodeType === 3) tn.data = tn.data;      // idom-style rewrite
+        if (tn && tn.nodeType === 3) tn.data = String(tn.data);      // idom-style rewrite
         pumpFrame();
         await tick();
       }
