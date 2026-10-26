@@ -78,7 +78,7 @@ const done = () => {
   push('spatial navigation installed', !!win.__spatialNavigation__);
 
   // Exercise the hooked JSON.parse with a realistic YouTube payload.
-  let parseOk = true, parseErr = '';
+  let parseOk, parseErr = '';
   try {
     const payload = JSON.stringify({
       responseContext: { visitorData: 'x', serviceTrackingParams: [{ service: 'GFEEDBACK' }] },
@@ -95,7 +95,7 @@ const done = () => {
   } catch (e) { parseOk = false; parseErr = String(e); }
   push('hooked JSON.parse handles a browse payload', parseOk, parseErr);
 
-  let strOk = true, strErr = '';
+  let strOk, strErr = '';
   try {
     const body = { context: { client: {} }, videoId: 'abc', playbackContext: { contentPlaybackContext: { html5Preference: 'HTML5_PREF_WANTS' } } };
     const s = win.JSON.stringify(body);

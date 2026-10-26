@@ -69,7 +69,7 @@ setTimeout(() => {
     }
     report();
   })();
-  return;
+
 
   function report() {
 

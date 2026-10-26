@@ -70,6 +70,7 @@ const EMOJI_RE_GLOBAL = new RegExp(EMOJI_RE.source, 'g');
 const CLEAN_TEXT_RE = /[\u200B\u200C\u2060\uFEFF]/g;
 // Single-scan gate for "does this string need any emoji work at all" - most
 // YouTube titles are plain text and reject here.
+// eslint-disable-next-line regexp/prefer-character-class -- Preserve the composed emoji and sentinel matcher.
 const NEEDS_TEXT_WORK_RE = new RegExp(EMOJI_RE.source + '|[\\u200B\\u200C\\u2060\\uFEFF]');
 
 const IGNORE_ON_SHORTS = new Set(['SEARCH', 'PLAYER', 'ACTION']);
@@ -334,7 +335,7 @@ export function initTrackingBlock() {
       return originalXHROpen.apply(this, arguments);
     };
 
-    window.XMLHttpRequest.prototype.send = function(body) {
+    window.XMLHttpRequest.prototype.send = function(_body) {
       if (this.__adblockBlocked) {
         return originalXHRSend.call(this); // drop the telemetry body
       }

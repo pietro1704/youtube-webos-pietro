@@ -38,7 +38,6 @@ const QUALITY_HEIGHTS = {
 
 function allowed(map, value, fallback) {
   // Object.hasOwn is Chrome 93; legacy webOS starts at Chromium 38.
-  // eslint-disable-next-line prefer-object-has-own
   return Object.prototype.hasOwnProperty.call(map, value) ? value : fallback;
 }
 

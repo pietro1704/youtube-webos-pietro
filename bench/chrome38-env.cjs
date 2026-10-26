@@ -11,7 +11,7 @@ function applyChrome38Downgrade(win) {
   const del = [];
   const rm = (obj, prop, label) => {
     if (obj && prop in obj) {
-      try { delete obj[prop]; del.push(label); } catch (e) { /* non-configurable */ }
+      try { delete obj[prop]; del.push(label); } catch (_e) { /* non-configurable */ }
     }
   };
 
@@ -87,14 +87,14 @@ function applyChrome38Downgrade(win) {
       const C = win[ctor];
       if (C && C.prototype && C.prototype[win.Symbol.iterator]) {
         try { delete C.prototype[win.Symbol.iterator]; del.push(ctor + '[Symbol.iterator]'); }
-        catch (e) { /* non-configurable */ }
+        catch (_e) { /* non-configurable */ }
       }
       // forEach on NodeList is Chrome 51 too; HTMLCollection never had one.
       if (C && C.prototype && C.prototype.forEach) {
-        try { delete C.prototype.forEach; del.push(ctor + '#forEach'); } catch (e) { /* */ }
+        try { delete C.prototype.forEach; del.push(ctor + '#forEach'); } catch (_e) { /* */ }
       }
       if (C && C.prototype && C.prototype.entries) {
-        try { delete C.prototype.entries; delete C.prototype.keys; delete C.prototype.values; } catch (e) { /* */ }
+        try { delete C.prototype.entries; delete C.prototype.keys; delete C.prototype.values; } catch (_e) { /* */ }
       }
     }
   }

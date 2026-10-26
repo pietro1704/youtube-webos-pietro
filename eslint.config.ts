@@ -42,7 +42,7 @@ const configs = [
       'no-var': 'error',
       'no-await-in-loop': 'error',
       'no-implicit-globals': ['error'],
-      'no-unused-vars': ['error', { vars: 'local', argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['error', { vars: 'local', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-useless-rename': ['error'],
       'no-useless-computed-key': 'error',
       'no-useless-constructor': 'error',
@@ -87,7 +87,8 @@ const configs = [
     // Why doesn't ESLint do this by default is beyond me.
     files: ['**/*.cjs'],
     languageOptions: {
-      sourceType: 'commonjs'
+      sourceType: 'commonjs',
+      globals: { ...globals.node }
     }
   },
 
@@ -100,8 +101,39 @@ const configs = [
   },
 
   {
+    files: ['src/**/*'],
+    rules: {
+      // Object.hasOwn requires Chrome 93; the app supports Chromium 38.
+      'prefer-object-has-own': 'off',
+      'no-restricted-properties': ['error', {
+        object: 'Object',
+        property: 'hasOwn',
+        message: 'Use Object.prototype.hasOwnProperty.call for Chromium 38 compatibility.'
+      }]
+    }
+  },
+
+  {
+    files: ['src/perf_mon.js', 'src/hooks/buffer-limit.js'],
+    // Keep these existing ES5 probes/shims intact; lint their other rules.
+    rules: { 'no-var': 'off' }
+  },
+
+  {
+    files: ['bench/**/*'],
+    // These tests and benchmarks intentionally measure sequential operations.
+    rules: { 'no-await-in-loop': 'off' }
+  },
+
+  {
+    files: ['bench/polyfill-conformance.cjs'],
+    // Sparse arrays are the inputs of the polyfill conformance checks.
+    rules: { 'no-sparse-arrays': 'off' }
+  },
+
+  {
     // `ignores` field must be in the very bottom config.
-    ignores: ['dist/**/*', '**/*-polyfill.*']
+    ignores: ['dist/**/*', 'artifacts/**/*', '**/*-polyfill.*']
   }
 ] as const satisfies Linter.Config[];
 

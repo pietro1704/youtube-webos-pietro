@@ -58,7 +58,7 @@ function trimSourceBuffer(sb, now) {
   var buffered;
   try {
     buffered = sb.buffered;
-  } catch (e) {
+  } catch (_e) {
     return; // buffer was detached mid-iteration
   }
   if (!buffered || buffered.length === 0) return;

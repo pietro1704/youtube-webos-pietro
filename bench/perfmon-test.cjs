@@ -74,7 +74,6 @@ setTimeout(() => {
   win.__PERF.options.requireTrustedKeys = false;
 
   // Find the cluster root by probing before/after a toggle.
-  const before = false; // cluster starts hidden
 
   // 1 press: must NOT toggle
   key(48);

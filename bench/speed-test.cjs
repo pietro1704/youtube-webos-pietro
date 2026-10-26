@@ -6,8 +6,7 @@
  * In every case the user must end up at the rate they asked for.
  */
 /* eslint-env node */
-/* eslint-disable no-await-in-loop */
-/* global __dirname */
+
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');

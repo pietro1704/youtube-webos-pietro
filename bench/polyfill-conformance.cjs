@@ -110,7 +110,7 @@ uspCases.forEach((c, i) => {
   diff(`USP get('a') #${i}`, (g) => new g.URLSearchParams(c).get('a'));
   diff(`USP getAll('a') #${i}`, (g) => new g.URLSearchParams(c).getAll('a'));
   diff(`USP has('a') #${i}`, (g) => new g.URLSearchParams(c).has('a'));
-  diff(`USP forEach #${i}`, (g) => { const o = []; new g.URLSearchParams(c).forEach((v, k) => o.push([k, v])); return o; });
+  diff(`USP forEach #${i}`, (g) => { const o = []; new g.URLSearchParams(c).forEach((v, k) => { o.push([k, v]); }); return o; });
   diff(`USP set #${i}`, (g) => { const p = new g.URLSearchParams(c); p.set('a', 'Z'); return p.toString(); });
   diff(`USP append #${i}`, (g) => { const p = new g.URLSearchParams(c); p.append('n', 'v v'); return p.toString(); });
   diff(`USP delete #${i}`, (g) => { const p = new g.URLSearchParams(c); p.delete('a'); return p.toString(); });
@@ -149,7 +149,7 @@ diff('URL searchParams from existing query', (g) => {
 diff('URL concat pattern from utils.handleLaunch', (g) => {
   const u = new g.URL('https://www.youtube.com/tv#/');
   const extra = new g.URLSearchParams('v=dQw4w9WgXcQ&list=PL+1');
-  extra.forEach((value, key) => u.searchParams.append(key, value));
+  extra.forEach((value, key) => { u.searchParams.append(key, value); });
   return u.toString();
 });
 

@@ -138,7 +138,7 @@ test('persistent resource exhaustion is bounded and genuine decode failures are 
     h.engine.decoder.reclaim();
     h.advance();
     // The next attempt depends on the asynchronously-created decoder.
-    // eslint-disable-next-line no-await-in-loop
+
     await settle();
   }
   h.engine.decoder.reclaim();

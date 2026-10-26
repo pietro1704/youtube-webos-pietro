@@ -65,7 +65,7 @@ setTimeout(async () => {
   for (let f = 0; f < 30; f++) { pumpFrame(); await tick(); }
   console.log(`createElement calls deferred to later frames: ${created - beforeDefer}`);
 
-  console.log(`\nelements per page (after everything settles):`);
+  console.log('\nelements per page (after everything settles):');
   for (const [name, sel] of [['Main', '#ytaf-page-main'], ['SponsorBlock', '#ytaf-page-sponsor'],
                              ['Shortcuts', '#ytaf-page-shortcuts'], ['UI Tweaks', '#ytaf-page-ui-tweaks']]) {
     console.log(`  ${name.padEnd(13)} ${String(count(sel)).padStart(4)}`);

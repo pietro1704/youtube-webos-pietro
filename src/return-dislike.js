@@ -653,7 +653,7 @@ class ReturnYouTubeDislike {
            if (this.focusedIndex === -1) this.focusedIndex = 0;
       }
 
-      let nextIndex = this.focusedIndex;
+      let nextIndex;
       if (isDown) {
           nextIndex = (this.focusedIndex + 1) % this.menuItemsCache.length;
       } else {
@@ -830,7 +830,7 @@ if (typeof window !== 'undefined') {
         cleanup();
         let enabled = true;
         if (typeof configRead === 'function') {
-            try { enabled = configRead('enableReturnYouTubeDislike'); } catch {}
+            try { enabled = configRead('enableReturnYouTubeDislike'); } catch { /* player unavailable */ }
         }
         window.returnYouTubeDislike = new ReturnYouTubeDislike(url.searchParams.get('v'), enabled);
         window.returnYouTubeDislike.init();
