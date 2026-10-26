@@ -1,5 +1,6 @@
 import { AudioEngine } from './audio-engine.js';
 import { installAudioFormatFilter } from './audio-formats.js';
+import { qualityStorageHeight, selectPreferredQuality } from '../playback-preferences.js';
 import {
   installMseHook,
   isSupportedSpeed,
@@ -249,7 +250,13 @@ export function createSpeedController({
       currentSpeed > 1.25 &&
       typeof player.setPlaybackQualityRange === 'function'
     ) {
-      player.setPlaybackQualityRange('hd1080', 'hd1080');
+      const preferred = configRead('preferredVideoQuality');
+      const limit = qualityStorageHeight(preferred);
+      const capped = limit && limit <= 1080 ? preferred : 'hd1080';
+      const quality = typeof player.getAvailableQualityLevels === 'function'
+        ? selectPreferredQuality(player.getAvailableQualityLevels(), capped) || 'auto'
+        : capped;
+      player.setPlaybackQualityRange(quality, quality);
     } else if (
       fromSpeed > 1.25 &&
       typeof player.setPlaybackQualityRange === 'function'
