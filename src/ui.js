@@ -8,6 +8,8 @@ import { createQueueControls, captureQueueSelection } from './video-queue.js';
 import { captionLanguageChoices, createCaptionExtras } from './caption-preferences.js';
 import { captionSizeModes, captionStyleModes } from './captions/preferences.js';
 import { createNavigationControls } from './navigation-preferences.js';
+import { createWatchedStatus } from './watched-filter.js';
+import { watchedPageNames, watchedThresholdModes, watchedConfigKeys } from './watched/preferences.js';
 import { buildLabel } from './build-info.js';
 import './auto-login.js';
 import './return-dislike.js';
@@ -108,7 +110,7 @@ window.addEventListener('ytaf-page-update', (e) => {
 });
 
 for (const key of ['enableAdBlock', 'removeGlobalShorts', 'removeLiveVideos',
-  'removeTopLiveGames', 'removeMostRelevant', 'hideGuestSignInPrompts']) {
+  'removeTopLiveGames', 'removeMostRelevant', 'hideGuestSignInPrompts', ...watchedConfigKeys]) {
   configAddChangeListener(key, () => { feedRefreshPending = true; });
 }
 
@@ -653,6 +655,7 @@ function createOptionsPanel() {
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  pageMain.appendChild(createSection('Watched videos', [createConfigCheckbox('enableWatchedFilter'), createAlignedCycleControl('watchedThreshold', watchedThresholdModes), ...Object.keys(watchedPageNames).map(page => createConfigCheckbox('watchedOn_' + page)), createWatchedStatus()]));
   pageMain.appendChild(createSection('Startup and sidebar', [createConfigCheckbox('startInSubscriptions'), createConfigCheckbox('enableSidebarCustomization'), createConfigCheckbox('hideSidebarChannels'), createNavigationControls()]));
   pageMain.appendChild(createSection('Captions', [createConfigCheckbox('enablePersistentCaptions'), createCaptionLanguageControl(), createAlignedCycleControl('captionFontSize', captionSizeModes), createAlignedCycleControl('captionStyle', captionStyleModes), createConfigCheckbox('captionAutoTranslate'), createCaptionExtras()]));
   pageMain.appendChild(createSection('Video queue', [createConfigCheckbox('enableVideoQueue'), createQueueControls()]));

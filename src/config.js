@@ -1,3 +1,4 @@
+import { watchedPageNames, watchedThresholdModes } from './watched/preferences.js';
 import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 
 const CONFIG_KEY = 'ytaf-configuration';
@@ -106,6 +107,8 @@ export const videoCodecModes = {
 };
 
 const configOptions = new Map([
+  ['enableWatchedFilter', { default: false, desc: 'Hide watched videos' }],
+  ['watchedThreshold', { default: '80', desc: 'Watched at or above', values: Object.keys(watchedThresholdModes) }],
   ['enableSidebarCustomization', { default: false, desc: 'Customize sidebar' }],
   ['startInSubscriptions', { default: false, desc: 'Open Subscriptions on next startup' }],
   ['hiddenSidebarItems', { default: [], desc: 'Hidden sidebar links' }],
@@ -164,6 +167,10 @@ const configOptions = new Map([
   ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }]
 ]);
+
+for (const page of Object.keys(watchedPageNames)) {
+  configOptions.set('watchedOn_' + page, { default: page === 'home' || page === 'subscriptions', desc: 'Filter watched: ' + watchedPageNames[page] });
+}
 
 // Register shortcut keys 0-9
 for (let i = 0; i < 10; i++) {
