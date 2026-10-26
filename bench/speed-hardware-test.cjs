@@ -14,8 +14,8 @@ const ROOT = path.resolve(__dirname, '..');
 const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.js';
 
 /**
- * honours: which strategy name actually moves the picture.
- *   null                  -> nothing works (true hardware lockout)
+ * honours: which native HTMLMediaElement strategy actually moves the picture.
+ *   null                  -> nothing native works (true hardware lockout)
  *   'direct'              -> a normal device
  *   'no-pitch-correction' -> works only with pitch correction off
  *   'default-rate'        -> works only via defaultPlaybackRate
@@ -73,7 +73,62 @@ function boot(honours) {
     set() {}, configurable: true
   });
 
+  // webOS 22+ capabilities used by the real fix. The picture is accelerated by
+  // rescaling the MSE timeline, so this stays effective even when every native
+  // playbackRate strategy above is ignored by the hardware decoder.
+  class FakeSourceBuffer extends win.EventTarget {
+    constructor() {
+      super();
+      this._timestampOffset = 0;
+      this._appendWindowStart = 0;
+      this._appendWindowEnd = Infinity;
+      this._buffered = { length: 0, start: () => 0, end: () => 0 };
+    }
+    appendBuffer() {}
+    remove() {}
+    get timestampOffset() { return this._timestampOffset; }
+    set timestampOffset(v) { this._timestampOffset = v; }
+    get appendWindowStart() { return this._appendWindowStart; }
+    set appendWindowStart(v) { this._appendWindowStart = v; }
+    get appendWindowEnd() { return this._appendWindowEnd; }
+    set appendWindowEnd(v) { this._appendWindowEnd = v; }
+    get buffered() { return this._buffered; }
+  }
+  class FakeMediaSource {
+    constructor() { this._buffers = []; this._duration = NaN; }
+    addSourceBuffer() {
+      const buffer = new FakeSourceBuffer();
+      this._buffers.push(buffer);
+      return buffer;
+    }
+    get duration() { return this._duration; }
+    set duration(v) { this._duration = v; }
+    get sourceBuffers() {
+      const buffers = this._buffers;
+      return { length: buffers.length, item: (i) => buffers[i] };
+    }
+  }
+  let nextBlob = 1;
+  win.MediaSource = FakeMediaSource;
+  win.AudioDecoder = class {};
+  win.AudioContext = class {};
+  win.URL.createObjectURL = () => 'blob:ytaf-' + nextBlob++;
+
+  const player = win.document.getElementById('ytlr-player__player-container-player');
+  player.getCurrentTime = () => video.currentTime;
+  player.getVideoData = () => ({ video_id: 'speed-test' });
+  player.setPlaybackQualityRange = () => {};
+  player.loadVideoById = () => {
+    const mediaSource = new win.MediaSource();
+    video.src = win.URL.createObjectURL(mediaSource);
+    mediaSource.addSourceBuffer('video/mp4; codecs="avc1.4d401f"');
+  };
+
   applyChrome38Downgrade(win);
+  // This harness exercises the WebCodecs-capable TV path with the ES5 bundle.
+  // Such TVs have native Reflect.construct; the separate legacy tests retain
+  // the full Chrome 38 downgrade without advertising WebCodecs support.
+  win.Reflect = Reflect;
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, video };
 }
@@ -90,7 +145,9 @@ async function effective(video) {
   return (video.currentTime - t0) / ((Date.now() - w0) / 1000);
 }
 
-(async () => {
+module.exports = { boot };
+
+if (require.main === module) (async () => {
   // A normal device: first strategy works, no escalation.
   {
     const { win, video } = boot('direct');
@@ -101,7 +158,7 @@ async function effective(video) {
       Math.abs(await effective(video) - 2) < 0.2, String(await effective(video)));
   }
 
-  // A device that only honours the rate with pitch correction off.
+  // Native edge cases all use the same MSE timeline path on webOS hardware.
   {
     const { win, video } = boot('no-pitch-correction');
     await wait(300);
@@ -109,7 +166,7 @@ async function effective(video) {
     // No assertion on the intermediate state: measuring it races with the
     // escalation that is already under way. What matters is where it lands.
     await wait(3000);
-    t('[pitch-locked TV] escalates until the picture really changes',
+    t('[pitch-locked TV] MSE timeline makes the picture really change',
       Math.abs(await effective(video) - 2) < 0.2, String(await effective(video)));
   }
 
@@ -119,7 +176,7 @@ async function effective(video) {
     await wait(300);
     win.__ytafSpeed.setSpeed(1.5);
     await wait(4000);
-    t('[default-rate TV] escalates to the working strategy',
+    t('[default-rate TV] MSE timeline makes the picture really change',
       Math.abs(await effective(video) - 1.5) < 0.2, String(await effective(video)));
   }
 
@@ -129,22 +186,19 @@ async function effective(video) {
     await wait(300);
     win.__ytafSpeed.setSpeed(1.5);
     await wait(9000);
-    t('[play-start TV] escalates to the play-start strategy',
+    t('[play-start TV] MSE timeline makes the picture really change',
       Math.abs(await effective(video) - 1.5) < 0.2, String(await effective(video)));
   }
 
-  // The LG G4 case: nothing works. Must say so instead of claiming success.
+  // The LG C5/G4 case: playbackRate lies, but MSE time still advances at 2x.
   {
     const { win, video } = boot(null);
-    const warnings = [];
-    win.console.warn = (...a) => warnings.push(a.join(' '));
     await wait(300);
     win.__ytafSpeed.setSpeed(2);
-    await wait(14000);
-    t('[hardware lockout] picture stays at 1x', Math.abs(await effective(video) - 1) < 0.2);
-    t('[hardware lockout] all strategies tried',
-      warnings.some((w) => /No strategy changed/.test(w)), warnings.slice(-1)[0] || '(none)');
-    t('[hardware lockout] property still reports what was asked (the trap)',
+    await wait(1400);
+    t('[hardware lockout] picture actually runs at 2x',
+      Math.abs(await effective(video) - 2) < 0.2, String(await effective(video)));
+    t('[hardware lockout] public property reports the mapped speed',
       Math.abs(video.playbackRate - 2) < 0.001, 'property=' + video.playbackRate);
   }
 

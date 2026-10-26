@@ -3,6 +3,7 @@ import { isShortsPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
 import { FetchRegistry } from './hooks';
 import { upgradeResponseThumbnails, thumbnailHookRequired } from './thumbnail-quality.js';
+import { pruneYouTubeAds, installYouTubeNetworkRules, installInitialResponseRules } from './ublock/youtube.js';
 
 const DEBUG = false;
 const EMOJI_DEBUG = false; 
@@ -99,7 +100,7 @@ function recomputeFilterFlags() {
   cfgNeedsContentFiltering = !!(cfgSnapshot[CONFIG_KEYS.ADBLOCK] || cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS] || cfgEmojiFixEffective);
 
   cfgFlags.enableAdBlock = !!cfgSnapshot[CONFIG_KEYS.ADBLOCK];
-  cfgFlags.enableTrackingBlock = !!cfgSnapshot[CONFIG_KEYS.TRACKING];
+  cfgFlags.enableTrackingBlock = !!cfgSnapshot[CONFIG_KEYS.ADBLOCK] && !!cfgSnapshot[CONFIG_KEYS.TRACKING];
   cfgFlags.removeGlobalShorts = !!cfgSnapshot[CONFIG_KEYS.SHORTS];
   cfgFlags.removeLiveVideos = !!cfgSnapshot[CONFIG_KEYS.LIVE];
   cfgFlags.removeTopLiveGames = !!cfgSnapshot[CONFIG_KEYS.LIVE_GAMES];
@@ -125,7 +126,10 @@ function recomputeFilterFlags() {
 
 recomputeFilterFlags();
 for (const k of Object.values(CONFIG_KEYS)) {
-  configAddChangeListener(k, recomputeFilterFlags);
+  configAddChangeListener(k, () => {
+    recomputeFilterFlags();
+    syncAdblockHook();
+  });
 }
 
 const SCHEMA_REGISTRY = {
@@ -398,12 +402,16 @@ function hookedParse(text, reviver) {
   // (localStorage reads, config, per-tile metadata) and none of them can be a
   // filterable response, so those calls must cost as close to nothing as
   // possible on top of the native parse.
-  if (!anyFilterEnabled || !text || text.length < 500) {
+  if (!anyFilterEnabled || !text) {
     return origParse.call(this, text, reviver);
   }
 
   const data = origParse.call(this, text, reviver);
   if (!data || typeof data !== 'object') return data;
+  if (cfgFlags.enableAdBlock) pruneYouTubeAds(data);
+  if (text.length < 500 && !cfgFlags.removeGlobalShorts && !cfgFlags.removeLiveVideos &&
+      !cfgFlags.removeTopLiveGames && !cfgFlags.removeMostRelevant && !cfgFlags.hideGuestPrompts &&
+      !cfgFlags.hideEndcards) return data;
   if (
     data.responseContext === undefined &&
     data.playerResponse === undefined &&
@@ -984,6 +992,10 @@ function findObjects(haystack, needlesArray, maxDepth = 10) {
 export function parseHookRequired() {
   return !!(
     cfgSnapshot[CONFIG_KEYS.ADBLOCK] ||
+    cfgSnapshot[CONFIG_KEYS.SHORTS] ||
+    cfgSnapshot[CONFIG_KEYS.LIVE] ||
+    cfgSnapshot[CONFIG_KEYS.LIVE_GAMES] ||
+    cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT] ||
     cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS] ||
     cfgSnapshot[CONFIG_KEYS.ENDCARDS] ||
     cfgEmojiFixEffective ||
@@ -1011,12 +1023,17 @@ export function initAdblock() {
 export function destroyAdblock() {
   if (!isHooked) return;
   if (DEBUG) console.info('[AdBlock] Restoring JSON.parse');
+  // A codec/other module may wrap this hook. Keep that chain intact; the cached
+  // flags make our own filter pass through until enabled again.
+  if (JSON.parse !== hookedParse) return;
   
   JSON.parse = origParse;
   isHooked = false;
 }
 
 initAdblock();
+installYouTubeNetworkRules(window, () => !!cfgSnapshot.enableAdBlock);
+installInitialResponseRules(window, () => !!cfgSnapshot.enableAdBlock);
 
 if (cfgSnapshot[CONFIG_KEYS.ADBLOCK] && cfgSnapshot[CONFIG_KEYS.TRACKING]) {
   try {
