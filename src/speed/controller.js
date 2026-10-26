@@ -357,7 +357,8 @@ export function createSpeedController({
   function createAudioSink({ speed, element }) {
     releaseAudioSink();
 
-    const engine = new AudioEngine({ win, speed, onError });
+    const engine = new AudioEngine({ win, speed, onError,
+      audioOffsetMs: Number(configRead('audioSyncOffsetMs')) || 0 });
     if (element) {
       engine.attachVideo(element);
       engine.setVolume(element.volume, element.muted);
@@ -397,7 +398,9 @@ export function createSpeedController({
     diagnostic: () => ({ speed: currentSpeed, videoId: lastVideoId, lastError,
       audio: activeSink ? { codec: activeSink.engine.cfg && activeSink.engine.cfg.codec,
         contextState: activeSink.engine.ctx.state, baseLatency: activeSink.engine.ctx.baseLatency,
-        outputLatency: activeSink.engine.ctx.outputLatency } : null }),
+        outputLatency: activeSink.engine.ctx.outputLatency,
+        compensatedLatency: activeSink.engine.outputLatencyS,
+        offsetMs: activeSink.engine.audioOffsetMs } : null }),
     activeEngine: () => (activeSink ? activeSink.engine : null),
     lastReloadAt: () => lastReloadAt,
     isSupported,

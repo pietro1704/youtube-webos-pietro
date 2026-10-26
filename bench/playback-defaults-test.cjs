@@ -31,6 +31,27 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   await wait(250);
   assert.equal(win.__ytafSpeed.getSpeed(), 2, 'internal player reset must not change default');
   assert.equal(JSON.parse(win.localStorage.getItem('ytaf-configuration')).defaultPlaybackSpeed, '2');
+  const audio = Array.from(win.document.querySelectorAll('.shortcut-control-row'))
+    .find(row => row.textContent.includes('Audio offset'));
+  assert.ok(audio, 'receiver audio offset must be reachable from the green menu');
+  audio.click();
+  await wait(250);
+  assert.equal(JSON.parse(win.localStorage.getItem('ytaf-configuration')).audioSyncOffsetMs, '25');
+  win.AudioContext = function () {
+    this.state = 'running';
+    this.currentTime = 0;
+    this.createGain = () => ({ gain: { value: 1 }, connect() {} });
+    this.close = () => { this.state = 'closed'; };
+  };
+  const ms = new win.MediaSource();
+  video.src = win.URL.createObjectURL(ms);
+  ms.addSourceBuffer('video/mp4; codecs="avc1"');
+  ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+  assert.equal(win.__ytafSpeed.diag().audio.offsetMs, 25,
+    'a new audio pipeline must read the saved receiver adjustment');
+  audio.click();
+  assert.equal(win.__ytafSpeed.diag().audio.offsetMs, 50,
+    'green-menu changes must reach the currently playing audio engine');
   win.close();
   console.log('playback defaults: green-menu change, first video, autoplay and internal reset passed');
 })().catch(error => { console.error(error); process.exit(1); });

@@ -2,7 +2,7 @@
 import './spatial-navigation-polyfill.js';
 import { dearrowModes, logoStyles, thumbnailQualityModes, videoCodecModes } from './config.js';
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
-import { playbackSpeedModes, videoQualityModes } from './playback-preferences.js';
+import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 import './ui.css';
 import './auto-login.js';
 import './return-dislike.js';
@@ -327,6 +327,7 @@ function createAlignedCycleControl(configKey, displayMap) {
 const createLogoControl = () => createAlignedCycleControl('logoStyle', logoStyles);
 const createVideoCodecControl = () => createAlignedCycleControl('forceVideoCodec', videoCodecModes);
 const createPlaybackSpeedControl = () => createAlignedCycleControl('defaultPlaybackSpeed', playbackSpeedModes);
+const createAudioSyncControl = () => createAlignedCycleControl('audioSyncOffsetMs', audioSyncModes);
 const createVideoQualityControl = () => createAlignedCycleControl('preferredVideoQuality', videoQualityModes);
 const createDeArrowControl = () => createAlignedCycleControl('dearrowMode', dearrowModes);
 function createThumbnailQualityControl() {
@@ -608,6 +609,8 @@ function createOptionsPanel() {
 
   pageMain.appendChild(createSection('Video Player',
   [createPlaybackSpeedControl(),
+  createAudioSyncControl(),
+  createElement('div', { text: 'Audio offset applies to accelerated playback. Positive values advance audio; negative values delay it.', style: { color: '#aaa', fontSize: '1.6vh' } }),
   createVideoQualityControl(),
   createVideoCodecControl(),
   createConfigCheckbox('hideEndcards'),

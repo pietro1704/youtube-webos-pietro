@@ -434,7 +434,16 @@ export function installMseHook(
 
   const MAX_REST = 4 * 1024 * 1024;
 
-  class FakeAudioSourceBuffer extends win.EventTarget {
+  // WebCodecs-capable TVs support Reflect.construct. Construct the native
+  // EventTarget explicitly so the ES5 build does not call its constructor with
+  // Function.apply (illegal on native DOM classes).
+  function SourceBufferEventTarget() {
+    return Reflect.construct(win.EventTarget, [], this.constructor);
+  }
+  SourceBufferEventTarget.prototype = win.EventTarget.prototype;
+  Object.setPrototypeOf(SourceBufferEventTarget, win.EventTarget);
+
+  class FakeAudioSourceBuffer extends SourceBufferEventTarget {
     constructor(win, mime, speed, sink, onError) {
       super();
       this.win = win;
