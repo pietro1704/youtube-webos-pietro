@@ -5,6 +5,7 @@ const bundle = path.resolve(process.argv[2] || 'dist/webOSUserScripts/userScript
 const suites = [
   'modern-smoke.cjs',
   'build-info-test.cjs',
+  'queue-ui-test.cjs',
   'spatnav-correctness.cjs',
   'playback-defaults-test.cjs',
   'native-speed-menu-test.cjs',

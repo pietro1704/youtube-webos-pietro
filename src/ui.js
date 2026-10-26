@@ -4,6 +4,7 @@ import { dearrowModes, logoStyles, thumbnailQualityModes, videoCodecModes } from
 import { configAddChangeListener, configRead, configWrite, configGetDesc, segmentTypes, configGetDefault, shortcutActions, sbModes, sbModesHighlight, forcePreviewModes } from './config.js';
 import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 import './ui.css';
+import { createQueueControls, captureQueueSelection } from './video-queue.js';
 import { buildLabel } from './build-info.js';
 import './auto-login.js';
 import './return-dislike.js';
@@ -632,6 +633,7 @@ function createOptionsPanel() {
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
+  pageMain.appendChild(createSection('Video queue', [createConfigCheckbox('enableVideoQueue'), createQueueControls()]));
   const buildDetails = createElement('div', { id: 'ytaf-build-info', text: buildLabel(), style: { overflowWrap: 'anywhere' } });
   pageMain.appendChild(createSection('About this build', [buildDetails, createConfigCheckbox('showBuildBadge')]));
   elmContainer.appendChild(pageMain);
@@ -721,13 +723,14 @@ function createOptionsPanel() {
 // document.body.appendChild(optionsPanel); removed
 
 function showOptionsPanel(visible) {
-  if (panelInitBlock) {
+  if (panelInitBlock && visible !== false) {
       console.log('[UI] Options panel toggle blocked due to initialization lock.');
       return;
   }
   if (visible === undefined || visible === null) visible = true;
   
   if (visible && !optionsPanelVisible) {
+    captureQueueSelection(document.activeElement);
     
     // Lazy Initialization
     if (!optionsPanel) {
@@ -765,6 +768,7 @@ function showOptionsPanel(visible) {
     }
     optionsPanelVisible = true;
   } else if (!visible && optionsPanelVisible && optionsPanel) {
+    panelInitBlock = false;
     console.info('Hiding options panel!');
     optionsPanel.style.display = 'none';
     sponsorBlockUI.togglePopup(false);
