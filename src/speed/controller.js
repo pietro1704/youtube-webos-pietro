@@ -178,6 +178,35 @@ export function createSpeedController({
   let lastError = null;
   let destroyed = false;
   let menuTimer = null;
+  let operationGeneration = 0;
+  let pauseRestore = null;
+
+  function cancelPauseRestore() {
+    if (!pauseRestore) return;
+    win.clearTimeout(pauseRestore.timer);
+    win.removeEventListener?.('yt-player-state-change', pauseRestore.listener);
+    pauseRestore = null;
+  }
+
+  function cancelPending() {
+    operationGeneration++;
+    if (pending) win.clearTimeout(pending.timer);
+    pending = null;
+    cancelPauseRestore();
+  }
+
+  function cancelForNavigation(evt) {
+    if (evt.type === 'ytaf-page-update' && evt.detail?.isWatch !== false) return;
+    cancelPending();
+    cancelMenuSync();
+  }
+  for (const type of ['hashchange', 'pagehide', 'ytaf-page-update'])
+    win.addEventListener?.(type, cancelForNavigation);
+  const cancelPauseForInput = evt => {
+    if (!evt.__ytafSynthetic) cancelPauseRestore();
+  };
+  for (const type of ['keydown', 'mousedown'])
+    win.addEventListener?.(type, cancelPauseForInput, true);
 
   function cancelMenuSync() {
     if (menuTimer !== null) win.clearTimeout(menuTimer);
@@ -210,77 +239,119 @@ export function createSpeedController({
     return enabled() && isSupported() ? currentSpeed : 1;
   }
 
-  function position(player) {
-    try {
-      return player.getCurrentTime();
-    } catch {
-      return 0;
-    }
+  function sameContext(op) {
+    return !destroyed && enabled() && operationGeneration === op.generation &&
+      getPlayer() === op.player && videoId() === op.videoId &&
+      win.location?.href === op.location;
   }
 
-  function scheduleReload(fromSpeed, immediate = false) {
-    const player = getPlayer();
-    if (!player) return;
-    if (pending && pending.videoId !== videoId()) {
-      win.clearTimeout(pending.timer);
+  function scheduleReload(fromSpeed, immediate = false, options = {}) {
+    const player = getPlayer(), id = videoId();
+    if (!player || !id) return;
+    const previous = pending && pending.player === player && pending.videoId === id &&
+      pending.location === win.location?.href ? pending : null;
+    cancelPending();
+    const op = {
+      player, videoId: id, location: win.location?.href,
+      fromSpeed: previous ? previous.fromSpeed : fromSpeed,
+      previousDefault: previous ? previous.previousDefault : options.previousDefault,
+      persist: options.persist, shouldNotify: options.shouldNotify,
+      speed: currentSpeed, generation: operationGeneration, timer: null
+    };
+    pending = op;
+    const run = () => {
+      if (pending !== op) return;
       pending = null;
-    }
-    if (pending) {
-      win.clearTimeout(pending.timer);
-    } else {
-      pending = { position: position(player), videoId: videoId(), fromSpeed, timer: null };
-    }
-    if (immediate) {
-      const p = pending;
-      pending = null;
-      applyReload(p);
+      applyReload(op);
+    };
+    if (immediate) run();
+    else op.timer = win.setTimeout(run, RELOAD_DELAY_MS);
+  }
+
+  function restorePause(op) {
+    cancelPauseRestore();
+    const pause = () => {
+      if (!sameContext(op)) return;
+      try { op.player.pauseVideo(); }
+      catch (error) {
+        lastError = String(error);
+        notify('Could not restore paused playback');
+      }
+    };
+    // Some players start asynchronously after loadVideoById returns. Reapply
+    // pause on that first PLAYING event, unless the user has interacted since.
+    const restoration = { listener: null, timer: null };
+    restoration.listener = evt => {
+      if (pauseRestore !== restoration || evt.detail?.state !== 1) return;
+      cancelPauseRestore();
+      pause();
+    };
+    restoration.timer = win.setTimeout(() => {
+      if (pauseRestore === restoration) cancelPauseRestore();
+    }, 2500);
+    pauseRestore = restoration;
+    win.addEventListener?.('yt-player-state-change', restoration.listener);
+    pause();
+  }
+
+  function applyReload(op) {
+    if (!sameContext(op) || currentSpeed === op.fromSpeed) return;
+    const player = op.player;
+    try {
+      lastError = null;
+      if (typeof player.setPlaybackQualityRange === 'function') {
+        try {
+          const preferred = configRead('preferredVideoQuality') || 'auto';
+          const quality = typeof player.getAvailableQualityLevels === 'function'
+            ? selectPreferredQuality(player.getAvailableQualityLevels(), preferred) || 'auto'
+            : preferred;
+          player.setPlaybackQualityRange(quality, quality);
+        } catch (error) {
+          lastError = String(error);
+          if (sameContext(op)) notify('Could not apply preferred quality; using current quality');
+        }
+      }
+      if (!sameContext(op) || currentSpeed !== op.speed) return;
+      const at = player.getCurrentTime();
+      if (!Number.isFinite(at) || at < 0) throw new Error('Playback position unavailable');
+      const state = player.getPlayerState?.();
+      const paused = state === 2 || state === 5;
+      const cue = paused && typeof player.cueVideoById === 'function';
+      if (paused && !cue && typeof player.pauseVideo !== 'function')
+        throw new Error('Pause control unavailable');
+      if (!sameContext(op) || currentSpeed !== op.speed) return;
+      const previousSink = activeSink;
+      // Keep the old sink alive if the player rejects the load. A synchronous
+      // replacement pipeline owns its new sink; never destroy that newer sink.
+      if (cue) player.cueVideoById(op.videoId, at);
+      else player.loadVideoById(op.videoId, at);
+      if (!sameContext(op) || currentSpeed !== op.speed) return;
+      lastReloadAt = Date.now();
+      if (activeSink === previousSink) releaseAudioSink();
+      if (paused && !cue) restorePause(op);
+      if (op.shouldNotify) notify(`Playback speed ${op.speed}×`);
+    } catch (error) {
+      if (!sameContext(op) || currentSpeed !== op.speed) return;
+      lastError = String(error);
+      currentSpeed = op.fromSpeed;
+      if (op.persist && configWrite && configRead('defaultPlaybackSpeed') === String(op.speed))
+        configWrite('defaultPlaybackSpeed', op.previousDefault);
+      notify('Could not change playback speed: ' + error.message);
       return;
     }
-    pending.timer = win.setTimeout(() => {
-      const p = pending;
-      pending = null;
-      applyReload(p);
-    }, RELOAD_DELAY_MS);
-  }
-
-  function applyReload({ position: at, fromSpeed, videoId: expectedId }) {
-    if (destroyed) return;
-    if (expectedId && expectedId !== videoId()) return;
-    // Back where the burst started: the playing MediaSource is already right.
-    if (currentSpeed === fromSpeed) return;
-    // Stop any previous Web Audio engine immediately so it doesn't keep playing
-    // while the new MediaSource is being set up.
-    releaseAudioSink();
-    const player = getPlayer();
-    if (!player) return;
-    if (typeof player.setPlaybackQualityRange === 'function') {
-      const preferred = configRead('preferredVideoQuality') || 'auto';
-      const quality = typeof player.getAvailableQualityLevels === 'function'
-        ? selectPreferredQuality(player.getAvailableQualityLevels(), preferred) || 'auto'
-        : preferred;
-      player.setPlaybackQualityRange(quality, quality);
-    }
-    const videoData = player.getVideoData && player.getVideoData();
-    if (!videoData || !videoData.video_id) return;
-    lastReloadAt = Date.now();
-    player.loadVideoById(videoData.video_id, at);
-    // If YouTube's own menu is bound (native-menu.js), keep what it shows in
-    // line with the real speed once the reloaded video has started.
+    // Keep the native menu consistent only while this exact operation owns it.
     const setRate = player.__ytafOriginalSetPlaybackRate;
     if (setRate && typeof player.getPlaybackRate === 'function') {
       cancelMenuSync();
-      const rate = currentSpeed;
-      const id = videoData.video_id;
-      menuTimer = win.setTimeout(() => {
+      const timer = win.setTimeout(() => {
+        if (menuTimer !== timer) return;
         menuTimer = null;
-        if (destroyed || getPlayer() !== player || videoId() !== id || currentSpeed !== rate) return;
+        if (!sameContext(op) || currentSpeed !== op.speed) return;
         try {
-          if (player.getPlaybackRate() !== rate)
-            setRate.call(player, rate);
-        } catch {
-          // The menu only shows a stale value; playback itself is unaffected.
-        }
+          if (player.getPlaybackRate() !== op.speed) setRate.call(player, op.speed);
+        } catch { /* Menu text can lag without affecting playback. */ }
       }, 2500);
+      menuTimer = timer;
     }
   }
 
@@ -298,16 +369,17 @@ export function createSpeedController({
       return false;
     }
     const previousSpeed = currentSpeed;
+    const previousDefault = configRead('defaultPlaybackSpeed');
     cancelMenuSync();
     lastVideoId = videoId() || lastVideoId;
     currentSpeed = speed;
     if (persist && configWrite) configWrite('defaultPlaybackSpeed', String(speed));
-    if (shouldNotify) notify(`Playback speed ${speed}×`);
-    if (reload) scheduleReload(
-      pending && pending.videoId === videoId() ? pending.fromSpeed : previousSpeed,
-      immediate
-    );
-    return true;
+    if (reload) scheduleReload(previousSpeed, immediate, { previousDefault, persist, shouldNotify });
+    else {
+      cancelPending();
+      if (shouldNotify) notify(`Playback speed ${speed}×`);
+    }
+    return !immediate || !reload || currentSpeed === speed;
   }
 
   function cycle() {
@@ -353,8 +425,11 @@ export function createSpeedController({
   function destroy() {
     destroyed = true;
     cancelMenuSync();
-    if (pending) win.clearTimeout(pending.timer);
-    pending = null;
+    cancelPending();
+    for (const type of ['hashchange', 'pagehide', 'ytaf-page-update'])
+      win.removeEventListener?.(type, cancelForNavigation);
+    for (const type of ['keydown', 'mousedown'])
+      win.removeEventListener?.(type, cancelPauseForInput, true);
     releaseAudioSink();
   }
 
