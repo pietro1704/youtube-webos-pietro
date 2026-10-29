@@ -338,26 +338,19 @@ class SponsorBlockHandler {
         this.currentManualSegment = null;
     }
 
-    // O(log N) - Finds segment containing time
+    // Starts are sorted, but ends are not: binary search cannot discard an
+    // earlier enclosing interval. Active manual choices take precedence over
+    // automatic skips; otherwise keep chronological order without merging modes.
     findSegmentAtTime(time) {
-        if (this.skipSegments.length === 0) return -1;
-
-        let left = 0;
-        let right = this.skipSegments.length - 1;
-
-        while (left <= right) {
-            const mid = (left + right) >>> 1;
-            const seg = this.skipSegments[mid];
-
-            if (time >= seg.start && time < seg.end) {
-                return mid;
-            } else if (time < seg.start) {
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
+        let first = -1;
+        for (let i = 0; i < this.skipSegments.length; i++) {
+            const seg = this.skipSegments[i];
+            if (seg.start > time) break;
+            if (time >= seg.end) continue;
+            if (seg.mode === 'manual_skip') return i;
+            if (first === -1) first = i;
         }
-        return -1;
+        return first;
     }
 
     // O(log N) - Finds first segment starting after or at time
@@ -1164,20 +1157,16 @@ class SponsorBlockHandler {
             return;
         }
 
-        // Check the predicted segment index first (O(1)) before Binary Search (O(log N))
-        let segmentIdx = -1;
+        // Re-evaluate overlaps even when the predicted interval still contains
+        // the clock: a nested manual segment must remain a manual decision.
+        let segmentIdx = this.findSegmentAtTime(currentTime);
         const expectedSeg = this.skipSegments[this.nextSegmentIndex];
-
-        if (expectedSeg && currentTime >= expectedSeg.start) {
-			// Only apply the 1.5s frame drop gap to auto_skip segments
-			const isAutoSkip = expectedSeg.mode === 'auto_skip';
-			if (currentTime < expectedSeg.end || (isAutoSkip && (currentTime - expectedSeg.end) < 1.5)) {
-				segmentIdx = this.nextSegmentIndex;
-			} else {
-				// Fallback to Binary Search
-				segmentIdx = this.findSegmentAtTime(currentTime);
-			}
-		}
+        // Preserve tolerance for dropped timeupdate frames only when no active
+        // interval owns this time. Never let it override a manual segment.
+        if (segmentIdx === -1 && expectedSeg?.mode === 'auto_skip' &&
+            currentTime >= expectedSeg.end && currentTime - expectedSeg.end < 1.5) {
+            segmentIdx = this.nextSegmentIndex;
+        }
 
         if (segmentIdx === -1) {
             // We aren't in a segment. Since resetSegmentTracking was correct, 
@@ -1243,10 +1232,11 @@ class SponsorBlockHandler {
         let jumpTarget = seg.end;
 		const categoryName = seg.categoryName;
         const skippedCategories = [categoryName];
-        const segmentsToMark = [seg.originalIndex];
+        const segmentsToMark = [seg];
 
         for (let i = segmentIdx + 1; i < this.skipSegments.length; i++) {
             const next = this.skipSegments[i];
+            if (next.end <= currentTime) continue;
 
             if (next.mode !== 'auto_skip') {
                 if (next.start < jumpTarget) {
@@ -1258,7 +1248,7 @@ class SponsorBlockHandler {
 
             jumpTarget = Math.max(jumpTarget, next.end);
             skippedCategories.push(next.categoryName);
-            segmentsToMark.push(next.originalIndex);
+            segmentsToMark.push(next);
         }
 
         if (segmentIdx === this.lastSkippedSegmentIndex && Math.abs(currentTime - this.lastSkipTime) < 0.1) {
@@ -1268,7 +1258,11 @@ class SponsorBlockHandler {
         this.lastSkipTime = currentTime;
         this.lastSkippedSegmentIndex = segmentIdx;
         
-        segmentsToMark.forEach(idx => { this.skippedSegmentIndices.add(idx); });
+        // A manual boundary can truncate an enclosing skip. Retire it only
+        // once its own end was reached, so skip-once does not lose the remainder.
+        segmentsToMark.forEach(segment => {
+            if (segment.end <= jumpTarget + 0.1) this.skippedSegmentIndices.add(segment.originalIndex);
+        });
 
         if (this.isLegacyWebOSVer) {
             const duration = this.video.duration;
@@ -1292,7 +1286,7 @@ class SponsorBlockHandler {
         }
 
         this.nextSegmentIndex = segmentIdx + 1;
-        // Re-find next index properly via binary search just to be safe after a skip
+        // Re-find the active interval after a skip, including enclosing segments
         const targetSegIdx = this.findSegmentAtTime(jumpTarget);
         
         if (targetSegIdx !== -1) {
