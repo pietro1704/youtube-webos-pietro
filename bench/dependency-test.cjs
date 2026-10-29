@@ -9,7 +9,7 @@ const { applyBundleEnvironment, UA, setUserAgent } = require('./bundle-env.cjs')
 
 const bundlePath = process.argv[2] || 'dist/webOSUserScripts/userScript.js';
 
-function boot(cfg) {
+function boot(cfg, setup) {
   const dom = new JSDOM('<!doctype html><html><body class="WEB_PAGE_TYPE_BROWSE"><ytlr-app></ytlr-app></body></html>',
     { runScripts: 'outside-only', url: 'https://www.youtube.com/tv',
       virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
@@ -31,6 +31,7 @@ function boot(cfg) {
     upgradeThumbnails: false, enableAutoLogin: false, dearrowMode: 'off'
   }, cfg)));
   applyBundleEnvironment(win);
+  if (setup) setup(win);
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
   return { win, NS, opened, pump: () => { const q = rafQ; rafQ = []; for (const cb of q) cb(0); } };
 }

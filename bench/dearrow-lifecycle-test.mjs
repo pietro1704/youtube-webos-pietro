@@ -122,3 +122,90 @@ test('clearing on disable cancels work and permits a later retry', async () => {
   assert.equal(calls, 2);
   client.destroy();
 });
+
+for (const changed of ['title', 'image', 'both']) test('same-video child replacement refreshes DeArrow references: ' + changed, async () => {
+  const dom = new JSDOM('<main><div data-video-id="aaaaaaaaaa1"><span data-title>Original</span><img src="https://i.ytimg.com/vi/aaaaaaaaaa1/old.jpg" srcset="old 2x"></div></main>');
+  const root = dom.window.document.querySelector('main'), tile = root.firstElementChild;
+  let mode = 'titles_thumbnails';
+  const adapter = createDeArrowDomAdapter({ root, getMode: () => mode,
+    client: { get: async () => ({ title: 'Better', thumbnailTimestamp: 12 }) } });
+  try {
+    adapter.refresh(); await Promise.resolve();
+    if (changed !== 'image') tile.querySelector('[data-title]').outerHTML = '<span data-title>New original</span>';
+    if (changed !== 'title') tile.querySelector('img').outerHTML = '<img src="https://i.ytimg.com/vi/aaaaaaaaaa1/new.jpg" srcset="new 2x">';
+    adapter.refresh(); await Promise.resolve();
+    assert.equal(tile.querySelector('[data-title]').textContent, 'Better');
+    assert.ok(!tile.querySelector('img').src.includes('ytimg.com'));
+    mode = 'off'; adapter.refresh();
+    assert.equal(tile.querySelector('[data-title]').textContent, changed === 'image' ? 'Original' : 'New original');
+    assert.ok(tile.querySelector('img').src.endsWith(changed === 'title' ? '/old.jpg' : '/new.jpg'));
+    assert.equal(tile.querySelector('img').getAttribute('srcset'), changed === 'title' ? 'old 2x' : 'new 2x');
+  } finally { adapter.destroy(); dom.window.close(); }
+});
+
+test('host updates on reused nodes become the new restoration baseline', async () => {
+  const dom = new JSDOM('<main><div data-video-id="aaaaaaaaaa1"><span data-title>Original</span><img src="https://i.ytimg.com/vi/aaaaaaaaaa1/old.jpg"></div></main>');
+  const root = dom.window.document.querySelector('main'), tile = root.firstElementChild;
+  let mode = 'titles_thumbnails';
+  const adapter = createDeArrowDomAdapter({ root, getMode: () => mode,
+    client: { get: async () => ({ title: 'Better', thumbnailTimestamp: 12 }) } });
+  try {
+    adapter.refresh(); await Promise.resolve();
+    tile.querySelector('[data-title]').textContent = 'Updated by YouTube';
+    tile.querySelector('img').src = 'https://i.ytimg.com/vi/aaaaaaaaaa1/new.jpg';
+    tile.querySelector('img').setAttribute('srcset', 'updated 2x');
+    adapter.refresh(); await Promise.resolve();
+    assert.equal(tile.querySelector('[data-title]').textContent, 'Better');
+    mode = 'off'; adapter.refresh();
+    assert.equal(tile.querySelector('[data-title]').textContent, 'Updated by YouTube');
+    assert.ok(tile.querySelector('img').src.endsWith('/new.jpg'));
+    assert.equal(tile.querySelector('img').getAttribute('srcset'), 'updated 2x');
+  } finally { adapter.destroy(); dom.window.close(); }
+});
+
+test('a late response cannot write through retired child references before the next refresh', async () => {
+  const dom = new JSDOM('<main><div data-video-id="aaaaaaaaaa1"><span data-title>Original</span></div></main>');
+  const root = dom.window.document.querySelector('main'), tile = root.firstElementChild, retired = tile.firstElementChild;
+  const pending = [];
+  const adapter = createDeArrowDomAdapter({ root, getMode: () => 'titles',
+    client: { get: () => new Promise(resolve => pending.push(resolve)) } });
+  try {
+    adapter.refresh(); tile.innerHTML = '<span data-title>Replacement</span>';
+    pending[0]({ title: 'Stale', thumbnailTimestamp: null }); await Promise.resolve();
+    assert.equal(retired.textContent, 'Original');
+    assert.equal(tile.textContent, 'Replacement');
+    adapter.refresh(); pending.at(-1)(branding); await Promise.resolve();
+    assert.equal(tile.textContent, 'Better');
+  } finally { adapter.destroy(); dom.window.close(); }
+});
+
+test('background thumbnail replacement keeps the new native background on disable', async () => {
+  const dom = new JSDOM('<main><div data-video-id="aaaaaaaaaa1"><span data-title>Original</span><ytlr-thumbnail-details style="background-image:url(https://i.ytimg.com/vi/aaaaaaaaaa1/old.jpg)"></ytlr-thumbnail-details></div></main>');
+  const root = dom.window.document.querySelector('main'), tile = root.firstElementChild;
+  let mode = 'titles_thumbnails';
+  const adapter = createDeArrowDomAdapter({ root, getMode: () => mode,
+    client: { get: async () => ({ title: 'Better', thumbnailTimestamp: 12 }) } });
+  try {
+    adapter.refresh(); await Promise.resolve();
+    tile.querySelector('ytlr-thumbnail-details').outerHTML = '<ytlr-thumbnail-details style="background-image:url(https://i.ytimg.com/vi/aaaaaaaaaa1/new.jpg)"></ytlr-thumbnail-details>';
+    adapter.refresh(); await Promise.resolve();
+    assert.match(tile.querySelector('ytlr-thumbnail-details').style.backgroundImage, /dearrow-thumb/);
+    mode = 'off'; adapter.refresh();
+    assert.match(tile.querySelector('ytlr-thumbnail-details').style.backgroundImage, /new\.jpg/);
+  } finally { adapter.destroy(); dom.window.close(); }
+});
+
+test('host srcset update while branding is applied is restored without adopting the branded source', async () => {
+  const dom = new JSDOM('<main><div data-video-id="aaaaaaaaaa1"><img src="https://i.ytimg.com/vi/aaaaaaaaaa1/old.jpg" srcset="old 2x"></div></main>');
+  const root = dom.window.document.querySelector('main'), image = root.querySelector('img');
+  let mode = 'titles_thumbnails';
+  const adapter = createDeArrowDomAdapter({ root, getMode: () => mode,
+    client: { get: async () => ({ title: null, thumbnailTimestamp: 12 }) } });
+  try {
+    adapter.refresh(); await Promise.resolve();
+    image.setAttribute('srcset', 'new host 2x');
+    adapter.refresh(); await Promise.resolve();
+    mode = 'off'; adapter.refresh();
+    assert.ok(image.src.endsWith('/old.jpg')); assert.equal(image.getAttribute('srcset'), 'new host 2x');
+  } finally { adapter.destroy(); dom.window.close(); }
+});
