@@ -168,6 +168,7 @@ export function installMseHook(
   const origRemoveSourceBuffer = win.MediaSource.prototype.removeSourceBuffer;
   const liveSessions = new Set();
   const origCreateObjectURL = win.URL.createObjectURL;
+  const origRevokeObjectURL = win.URL.revokeObjectURL;
   const origSrcDesc = Object.getOwnPropertyDescriptor(
     win.HTMLMediaElement.prototype,
     'src'
@@ -175,12 +176,26 @@ export function installMseHook(
 
   const sessions = new WeakMap();
   const urlToMs = new Map();
+  const sourceUrls = new WeakMap();
   const msToEl = new WeakMap();
+  const elToSource = new WeakMap();
   const elToShim = new WeakMap();
   // The speed is decided once, at the first addSourceBuffer of a MediaSource,
   // and remembered even when it is 1: a later change of getSpeed() must not
   // turn half of the SourceBuffers of the same MediaSource into fakes.
   const decided = new WeakMap();
+
+  function forgetUrl(url) {
+    const ms = urlToMs.get(url);
+    if (!ms) return;
+    urlToMs.delete(url);
+    const record = sourceUrls.get(ms);
+    record.urls.delete(url);
+    if (!record.urls.size) {
+      ms.removeEventListener('sourceclose', record.close);
+      sourceUrls.delete(ms);
+    }
+  }
 
   // Attaching twice would stack two shims (x S^2): reuse a live one for the
   // same session, replace one that belongs to another session.
@@ -197,9 +212,26 @@ export function installMseHook(
     const url = origCreateObjectURL.call(this, obj);
     if (obj instanceof win.MediaSource) {
       urlToMs.set(url, obj);
+      let record = sourceUrls.get(obj);
+      if (!record) {
+        record = { urls: new Set(), close: () => {
+          for (const pendingUrl of [...record.urls]) forgetUrl(pendingUrl);
+        } };
+        sourceUrls.set(obj, record);
+        obj.addEventListener('sourceclose', record.close);
+      }
+      record.urls.add(url);
     }
     return url;
   };
+
+  if (typeof origRevokeObjectURL === 'function') {
+    win.URL.revokeObjectURL = function (url) {
+      const result = origRevokeObjectURL.call(this, url);
+      forgetUrl(String(url));
+      return result;
+    };
+  }
 
   if (origSrcDesc) {
     Object.defineProperty(win.HTMLMediaElement.prototype, 'src', {
@@ -209,10 +241,14 @@ export function installMseHook(
       set(val) {
         const ms = urlToMs.get(val);
         if (ms) {
-          msToEl.set(ms, this);
+          const binding = { element: this, url: val };
+          msToEl.set(ms, binding);
+          // URL revocation ends lookup ownership, not an already attached
+          // player's lifetime. Keep identity separately, with weak keys.
+          elToSource.set(this, binding);
           const session = sessions.get(ms);
           if (session) attach(this, session);
-        }
+        } else elToSource.delete(this);
         origSrcDesc.set.call(this, val);
       }
     });
@@ -248,8 +284,9 @@ export function installMseHook(
       liveSessions.add(session);
       const ms = this;
       session.reportError = error => {
-        const element = msToEl.get(ms);
-        if (session.closed || (element && urlToMs.get(element.src) !== ms)) return;
+        const binding = msToEl.get(ms);
+        const element = binding && binding.element;
+        if (session.closed || (element && (elToSource.get(element) !== binding || element.src !== binding.url))) return;
         if (onError) onError(error);
       };
       session.close = () => {
@@ -258,13 +295,22 @@ export function installMseHook(
         session.audio?.close();
         session.nativeAudio?.destroy();
         session.sink?.destroy?.();
+        const binding = msToEl.get(ms);
+        const element = binding && binding.element;
+        const current = element && elToShim.get(element);
+        if (current && current.session === session) {
+          current.shim.detach();
+          elToShim.delete(element);
+        }
+        if (element && elToSource.get(element) === binding) elToSource.delete(element);
+        msToEl.delete(ms);
         ms.removeEventListener('sourceclose', session.close);
         liveSessions.delete(session);
       };
       ms.addEventListener('sourceclose', session.close);
       patchMediaSource(this, session);
 
-      const el = msToEl.get(this);
+      const el = msToEl.get(this)?.element;
       if (el) attach(el, session);
     }
 
@@ -279,7 +325,7 @@ export function installMseHook(
         session.nativeAudio = createNativeAudioTrack({ win, mediaSource: this, speed,
           addSourceBuffer: type => origAddSourceBuffer.call(this, type), onError: session.reportError });
       } catch (error) { session.reportError(error); throw error; }
-      const sink = createAudioSink({ speed, element: msToEl.get(this) || null });
+      const sink = createAudioSink({ speed, element: msToEl.get(this)?.element || null });
       session.sink = sink;
       const fakeSb = new FakeAudioSourceBuffer(win, mime, speed, sink, session.reportError, session.nativeAudio);
       session.audio = fakeSb;
@@ -453,9 +499,11 @@ export function installMseHook(
 
   function uninstall() {
     for (const session of [...liveSessions]) session.close();
+    for (const url of [...urlToMs.keys()]) forgetUrl(url);
     if (origRemoveSourceBuffer) win.MediaSource.prototype.removeSourceBuffer = origRemoveSourceBuffer;
     win.MediaSource.prototype.addSourceBuffer = origAddSourceBuffer;
     win.URL.createObjectURL = origCreateObjectURL;
+    if (origRevokeObjectURL) win.URL.revokeObjectURL = origRevokeObjectURL;
     if (origSrcDesc) {
       Object.defineProperty(win.HTMLMediaElement.prototype, 'src', origSrcDesc);
     }
