@@ -15,6 +15,7 @@ const suites = [
   'playback-defaults-test.cjs',
   'native-speed-menu-test.cjs',
   'speed-hardware-test.cjs',
+  'speed-transition-ui-test.cjs',
   'speed-test.cjs',
   'settings-speed-test.cjs',
   'settings-entry-test.cjs',
