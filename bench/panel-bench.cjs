@@ -52,7 +52,7 @@ setTimeout(async () => {
   const openCreated = created - before;
 
   const panel = win.document.querySelector('.ytaf-ui-container');
-  const visible = !!panel && panel.style.display === 'block';
+  const visible = !!panel && panel.style.display === 'flex';
   const count = (sel) => { const p = panel && panel.querySelector(sel); return p ? p.getElementsByTagName('*').length : 0; };
 
   console.log(`=== ${label} ===`);
