@@ -9,6 +9,34 @@ function configure(win, calls, account = 'A') {
   win.localStorage.setItem('yt.leanback.default::last-identity-used', JSON.stringify({ data: { identityType: 'CORE_ID', effectiveObfuscatedGaiaId: account, identityCredentials: {} } }));
 }
 (async () => {
+  for (const action of ['panel', 'existing-flex', 'existing-hidden', 'closed-panel', 'user-key', 'mouse', 'navigate-return', 'account', 'pending-panel', 'synthetic-key']) {
+    const calls = [];
+    const app = boot({ startInSubscriptions: true, enableLegacyEmojiFix: false, dearrowMode: 'off' },
+      win => configure(win, calls)).win;
+    try {
+      if (action === 'existing-flex' || action === 'existing-hidden') {
+        const panel = app.document.createElement('div'); panel.className = 'ytaf-ui-container'; panel.style.display = 'flex';
+        panel.hidden = action === 'existing-hidden'; app.document.body.appendChild(panel);
+      }
+      if (action === 'pending-panel') app.JSON.parse(JSON.stringify(fixture()));
+      if (['panel', 'closed-panel', 'pending-panel'].includes(action)) app.ytaf_showOptionsPanel(true);
+      if (action === 'closed-panel') app.ytaf_showOptionsPanel(false);
+      if (action === 'user-key' || action === 'synthetic-key') {
+        const event = new app.KeyboardEvent('keydown', { keyCode: 40 });
+        if (action === 'synthetic-key') event.__ytafSynthetic = true;
+        app.dispatchEvent(event);
+      }
+      if (action === 'mouse') app.dispatchEvent(new app.MouseEvent('mousedown'));
+      if (action === 'account') configure(app, calls, 'B');
+      if (action === 'navigate-return') {
+        app.history.replaceState(null, '', '#/browse?c=FElibrary'); app.dispatchEvent(new app.Event('hashchange'));
+        app.history.replaceState(null, '', '#/home'); app.dispatchEvent(new app.Event('hashchange'));
+      }
+      if (action !== 'pending-panel') app.JSON.parse(JSON.stringify(fixture()));
+      await wait(150);
+      assert.equal(calls.length, ['synthetic-key', 'existing-hidden'].includes(action) ? 1 : 0, action + ': startup must respect the current user context');
+    } finally { app.close(); }
+  }
   const { win } = boot({ enableSidebarCustomization: true, startInSubscriptions: true, enableLegacyEmojiFix: false, dearrowMode: 'off' });
   try {
     const calls = []; configure(win, calls); win.launchParams = JSON.stringify({ reason: 'launcher' });

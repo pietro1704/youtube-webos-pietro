@@ -58,3 +58,16 @@ test('launcher metadata does not block startup, while video/voice/cast targets d
   assert.equal(hasExternalTarget({ reason: 'launcher', target: '' }), false);
   for (const value of [{ target: 'v=aaaaaaaaaaa' }, { contentTarget: { intent: 'search', intentParam: 'video' } }, { dialLaunchParams: 'video' }, 'malformed']) assert.equal(hasExternalTarget(value), true);
 });
+
+for (const reason of ['account', 'navigation', 'disabled']) test('invalidating a pending startup permanently retires that startup: ' + reason, async () => {
+  const h = harness(); let release;
+  h.dispatcher(() => new Promise(resolve => { release = resolve; }));
+  const first = h.controller.consider(catalog);
+  if (reason === 'account') h.account('B');
+  if (reason === 'navigation') h.landing(false);
+  if (reason === 'disabled') h.enabled(false);
+  release(command => h.calls.push(command)); assert.equal(await first, false);
+  h.landing(true); h.enabled(true); h.dispatcher(async () => command => h.calls.push(command));
+  assert.equal(await h.controller.consider(catalog), false);
+  assert.deepEqual(h.calls, []);
+});
