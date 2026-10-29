@@ -22,7 +22,7 @@ module.exports = {
     ['bench/smoke.cjs','<bundle>','<variant>'],
     ['bench/force-codec-test.cjs'],
     ['bench/sponsorblock-labels-test.cjs'],
-    ['--test','bench/dependency-security-test.cjs'],
+    ['--test','bench/dependency-security-test.cjs','bench/distribution-test.cjs'],
     ['--test','bench/config-resilience-test.cjs'],
     ['bench/config-resilience-ui-test.cjs','<bundle>','<variant>'],
     ['bench/dearrow-rerender-ui-test.cjs','<bundle>','<variant>'],

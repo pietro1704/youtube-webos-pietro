@@ -1,165 +1,21 @@
-name: Update Homebrew Repository
+name: Catalog from published release
 on:
   release:
     types: [published]
-  workflow_dispatch:
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 jobs:
-  update-repo:
+  catalog:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-      - name: Generate repo.json
+      - name: Download verified release catalog
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_NAME: ${{ github.repository }}
-        run: |
-          import json
-          import os
-          import sys
-          import urllib.request
-          import hashlib
-          
-          # --- CONFIGURATION ---
-          APP_INFO_PATH = 'assets/appinfo.json' 
-          ICON_PATH_IN_REPO = 'assets/icon.png'
-          # ---------------------
-          
-          if not os.path.exists(APP_INFO_PATH):
-              print(f"Error: {APP_INFO_PATH} not found.")
-              sys.exit(1)
-              
-          with open(APP_INFO_PATH, 'r') as f:
-              app_info = json.load(f)
-          
-          repo_name = os.environ['REPO_NAME']
-          api_url = f"https://api.github.com/repos/{repo_name}/releases/latest"
-          
-          req = urllib.request.Request(api_url)
-          req.add_header('Authorization', f"Bearer {os.environ['GITHUB_TOKEN']}")
-          
-          try:
-              with urllib.request.urlopen(req) as response:
-                  release_data = json.load(response)
-          except Exception as e:
-              print(f"Failed to fetch release: {e}")
-              sys.exit(1)
-          
-          standard_asset = None
-          modern_asset = None
-
-          for asset in release_data['assets']:
-              if asset['name'].endswith('.ipk'):
-                  if 'webOS22+' in asset['name']:
-                      modern_asset = asset
-                  else:
-                      standard_asset = asset
-          
-          if not standard_asset and not modern_asset:
-              print("No .ipk files found in the latest release")
-              sys.exit(1)
-              
-          packages = []
-          
-          def create_package(asset, is_modern=False):
-              ipk_url = asset['browser_download_url']
-              print(f"Downloading IPK from {ipk_url}")
-              
-              try:
-                  req = urllib.request.Request(ipk_url)
-                  with urllib.request.urlopen(req) as response:
-                      ipk_data = response.read()
-                      sha256_hash = hashlib.sha256(ipk_data).hexdigest()
-              except Exception as e:
-                  print(f"Failed to download asset: {e}")
-                  return None
-              
-              print(f"SHA256: {sha256_hash}")
-              
-              # Default values
-              pkg_id = app_info.get('id')
-              title = app_info.get('title')
-              description = app_info.get('description', title)
-              
-              # Overrides for modern build
-              if is_modern:
-                  pkg_id = f"{pkg_id}.webos22"
-                  title = f"{title} (webOS 22+)"
-                  description = "YouTube AdFree for webOS 22 and newer. Lighter optimized build supporting newer hardware."
-              
-              manifest = {
-                  "id": pkg_id,
-                  "version": app_info.get('version'),
-                  "type": app_info.get('type', 'web'),
-                  "title": title,
-                  "appDescription": description,
-                  "iconUri": f"https://raw.githubusercontent.com/{repo_name}/main/{ICON_PATH_IN_REPO}",
-                  "sourceUrl": f"https://github.com/{repo_name}",
-                  "rootRequired": False,
-                  "ipkUrl": ipk_url,
-                  "ipkHash": {
-                      "sha256": sha256_hash
-                  }
-              }
-              
-              return {
-                  "id": pkg_id,
-                  "title": title,
-                  "description": description,
-                  "iconUri": f"https://raw.githubusercontent.com/{repo_name}/main/{ICON_PATH_IN_REPO}",
-                  "manifest": manifest
-              }
-
-          if standard_asset:
-              print("Processing Standard Asset...")
-              pkg = create_package(standard_asset)
-              if pkg: packages.append(pkg)
-              
-          if modern_asset:
-              print("Processing Modern (webOS 22+) Asset...")
-              pkg = create_package(modern_asset, is_modern=True)
-              if pkg: packages.append(pkg)
-          
-          repo_data = {
-              "paging": {
-                  "page": 1,
-                  "count": len(packages),
-                  "maxPage": 1,
-                  "itemsTotal": len(packages)
-              },
-              "packages": packages
-          }
-          
-          with open('repo.json', 'w') as f:
-              json.dump(repo_data, f, indent=2)
-          
-          print("repo.json generated successfully!")
-        shell: python
-        
-      - name: Commit and Push repo.json
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          
-          # Checkout the main branch explicitly
-          git fetch origin main
-          git checkout main
-          
-          # Add and commit changes
-          git add repo.json
-          
-          # Only commit if there are changes
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update repo.json for new release"
-            git push origin main
-          fi
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release download "$RELEASE_TAG" --pattern repo.json --dir catalog
+      - uses: actions/upload-artifact@v4
+        with:
+          name: published-catalog
+          path: catalog/repo.json
+          if-no-files-found: error
