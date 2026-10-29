@@ -25,6 +25,9 @@ let lastPolledVideoId = null;
 let _isWatchPageCached = false;
 let videoBeingProcessed = null;
 let kickstartInProgress = false;
+let qualityAttemptKey = null;
+let qualityAttempts = 0;
+let lastTargetQuality = null;
 
 const qualitySetForVideo = new Set();
 
@@ -46,7 +49,7 @@ function isForceEnabled() {
 function effectivePreference() {
   const hardware = typeof window.AudioDecoder === 'function' && typeof window.MediaSource === 'function';
   const speed = window.__ytafSpeed ? window.__ytafSpeed.getSpeed() : Number(configRead('defaultPlaybackSpeed'));
-  if (hardware && speed > 1.25 && (_preferredQuality === 'auto' || qualityStorageHeight(_preferredQuality) > 1080)) return 'hd1080';
+  if (hardware && speed > 1.25 && _preferredQuality === 'auto') return 'hd1080';
   return _preferredQuality;
 }
 
@@ -127,7 +130,7 @@ function isQualityAlreadyPreferred() {
   if (!player) return false;
   try {
     const target = getTargetQuality();
-    if (!target) return true;
+    if (!target) return false;
     const currentQuality = player.getPlaybackQuality?.();
     return currentQuality === target;
   } catch {
@@ -209,9 +212,17 @@ function setQualityOnPlayer() {
       return { success: false, upgraded: false };
     }
 
+    const attemptKey = player.getVideoData?.()?.video_id + ':' + target;
+    if (qualityAttemptKey !== attemptKey) {
+      qualityAttemptKey = attemptKey;
+      qualityAttempts = 0;
+    }
     if (isQualityAlreadyPreferred()) {
       return { success: true, upgraded: false };
     }
+    // A player that rejects a request must not receive writes forever.
+    if (qualityAttempts >= 20) return { success: false, upgraded: false };
+    qualityAttempts++;
     
     DEBUG && console.log('[VideoQuality] Upgrading quality from:', player.getPlaybackQuality?.());
     
@@ -224,8 +235,8 @@ function setQualityOnPlayer() {
     DEBUG && console.info('[VideoQuality] ✅ Quality upgraded to:', afterQuality, qualityLabel);
     
     return { 
-      success: true, 
-      upgraded: true,
+      success: afterQuality === target,
+      upgraded: afterQuality === target,
       newQuality: qualityLabel || afterQuality
     };
     
@@ -237,7 +248,10 @@ function setQualityOnPlayer() {
 
 function notifyIfUpgraded(result) {
   if (result && result.upgraded) {
+    const notifiedPlayer = player;
+    const notifiedVideo = player?.getVideoData?.()?.video_id;
     setTimeout(() => {
+      if (isDestroyed || player !== notifiedPlayer || player?.getVideoData?.()?.video_id !== notifiedVideo) return;
       try {
         const finalQuality = player.getPlaybackQualityLabel?.() || result.newQuality || 'high quality';
         showNotification(`Video quality upgraded to ${finalQuality}`);
@@ -262,30 +276,10 @@ function interceptAndUpgradeQuality(videoId) {
   videoBeingProcessed = videoId;
   DEBUG && console.info('[VideoQuality] 🛑 Intercepting playback to upgrade quality:', videoId);
   
-  const currentState = player.getPlayerState?.();
-  const wasPlaying = currentState === STATE_PLAYING;
-  
-  try {
-    if (wasPlaying) player.pauseVideo?.();
-  } catch { /* ignore */ }
-  
-  requestAnimationFrame(() => {
-    const result = setQualityOnPlayer();
-    
-    if (result.success) {
-      qualitySetForVideo.add(videoId);
-    }
-    
-    requestAnimationFrame(() => {
-      if (wasPlaying) {
-        try {
-          player.playVideo?.();
-        } catch { /* ignore */ }
-      }
-      notifyIfUpgraded(result);
-      videoBeingProcessed = null;
-    });
-  });
+  const result = setQualityOnPlayer();
+  if (result.success) qualitySetForVideo.add(videoId);
+  notifyIfUpgraded(result);
+  videoBeingProcessed = null;
 }
 
 function handleStateChange(state) {
@@ -310,10 +304,18 @@ function handleStateChange(state) {
     
     if (!videoId) return;
     
+    const targetQuality = getTargetQuality();
+    if (targetQuality !== lastTargetQuality) {
+      lastTargetQuality = targetQuality;
+      qualitySetForVideo.clear();
+    }
     const isNewVideo = videoId !== lastVideoId;
     
     if (isNewVideo) {
       lastVideoId = videoId;
+      qualitySetForVideo.clear();
+      qualityAttemptKey = null;
+      videoBeingProcessed = null;
       DEBUG && console.info('[VideoQuality] 🎬 New video:', videoId);
       
       if (actualState === STATE_UNSTARTED) {
@@ -332,12 +334,14 @@ function handleStateChange(state) {
         // notifyIfUpgraded a no-op), so both cases collapse to one path.
         case STATE_UNSTARTED:
         case STATE_BUFFERING:
-            if (isNewVideo && player.getAvailableQualityLevels?.()?.length > 0) {
-                if (!isQualityAlreadyPreferred()) notifyIfUpgraded(setQualityOnPlayer());
-                qualitySetForVideo.add(videoId);
+            if (player.getAvailableQualityLevels?.()?.length > 0) {
+                const result = setQualityOnPlayer();
+                if (result.success) qualitySetForVideo.add(videoId);
+                notifyIfUpgraded(result);
             }
             break;
 
+        case 2: // Apply an explicit selection without resuming a paused video.
         case STATE_PLAYING:
             if (!isQualityAlreadyPreferred()) {
                 interceptAndUpgradeQuality(videoId);
@@ -347,7 +351,7 @@ function handleStateChange(state) {
             break;
     }
 
-	ensurePlaybackStarts();
+	if (actualState !== 2) ensurePlaybackStarts();
   } catch (e) {
     DEBUG && console.warn('[VideoQuality] Error in state change handler:', e);
   }
@@ -366,7 +370,7 @@ function startStatePolling() {
     try {
       const state = player.getPlayerState?.();
       const id = player.getVideoData?.()?.video_id;
-      if (state !== lastKnownState || id !== lastPolledVideoId) {
+      if (state !== lastKnownState || id !== lastPolledVideoId || (isForceEnabled() && (!qualitySetForVideo.has(id) || getTargetQuality() !== lastTargetQuality))) {
         lastKnownState = state;
         lastPolledVideoId = id;
         handleStateChange(state);
@@ -410,8 +414,10 @@ export function destroyVideoQuality() {
   lastVideoId = null;
   lastKnownState = null;
   lastPolledVideoId = null;
+  lastTargetQuality = null;
   configCleanup = null;
   qualitySetForVideo.clear();
+  qualityAttemptKey = null;
   videoBeingProcessed = null;
   _isWatchPageCached = false;
   kickstartInProgress = false;
@@ -464,10 +470,12 @@ export function initVideoQuality() {
             cachedQualitySettings = null;
             setLocalStorageQuality();
             qualitySetForVideo.clear();
+            qualityAttemptKey = null;
             handleStateChange(player?.getPlayerState?.());
           } else {
             clearStoredQuality();
             qualitySetForVideo.clear();
+            qualityAttemptKey = null;
             player?.setPlaybackQualityRange?.('auto', 'auto');
             player?.setPlaybackQuality?.('auto');
           }
@@ -476,6 +484,7 @@ export function initVideoQuality() {
         const onSpeedChange = () => {
           cachedQualitySettings = null;
           qualitySetForVideo.clear();
+          qualityAttemptKey = null;
           if (isForceEnabled()) {
             setLocalStorageQuality();
             handleStateChange(player?.getPlayerState?.());
