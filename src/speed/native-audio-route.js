@@ -37,7 +37,16 @@ export function createNativeAudioRoute({ win, createNativeAudioSource, onError }
   function appended() {
     if (closed) return;
     buffer.removeEventListener('updateend', appended);
-    try { source.mediaSource.endOfStream(); } catch (error) { failed(error); }
+    try {
+      source.mediaSource.endOfStream();
+      // webOS can fail or stall its decoder when play/autoplay races the AAC
+      // append. Start only after the complete short source has been committed.
+      Promise.resolve(element.play()).then(() => {
+        if (closed) return;
+        win.clearTimeout(timer);
+        timer = null;
+      }, failed);
+    } catch (error) { failed(error); }
   }
 
   function opened() {
@@ -60,7 +69,7 @@ export function createNativeAudioRoute({ win, createNativeAudioSource, onError }
     element.setAttribute('data-ytaf-native-audio-route', '');
     element.setAttribute('aria-hidden', 'true');
     element.loop = true;
-    element.autoplay = true;
+    element.preload = 'auto';
     // Do not mute the native element: webOS must open its output route. The
     // encoded samples are silent; the engine's PCM carries the actual sound.
     element.addEventListener('error', failed);
@@ -68,11 +77,6 @@ export function createNativeAudioRoute({ win, createNativeAudioSource, onError }
     element.src = source.url;
     win.document.body.appendChild(element);
     timer = win.setTimeout(() => failed(new Error('Native audio route timed out')), 8000);
-    Promise.resolve(element.play()).then(() => {
-      if (closed) return;
-      win.clearTimeout(timer);
-      timer = null;
-    }, failed);
   } catch (error) { failed(error); }
   return { destroy };
 }
