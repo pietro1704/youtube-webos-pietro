@@ -11,6 +11,7 @@ import { createNavigationControls } from './navigation-preferences.js';
 import { createWatchedStatus } from './watched-filter.js';
 import { watchedPageNames, watchedThresholdModes, watchedConfigKeys } from './watched/preferences.js';
 import { buildLabel } from './build-info.js';
+import { protectSettingsScroll } from './settings-scroll.js';
 import './auto-login.js';
 import './return-dislike.js';
 import { initLogoStyle } from './logo-style.js';
@@ -624,6 +625,7 @@ function createOptionsPanel() {
 
   // --- Page 1: Main ---
   pageMain = createElement('div', { class: 'ytaf-settings-page', id: 'ytaf-page-main' });
+  protectSettingsScroll(window, pageMain);
   
   const elAdBlock = createConfigCheckbox('enableAdBlock');
   const elTrackingBlock = createConfigCheckbox('enableTrackingBlock');
@@ -686,6 +688,7 @@ function createOptionsPanel() {
     function buildSponsorPage() {
   // --- Page 2: SponsorBlock ---
     pageSponsor = createElement('div', { class: 'ytaf-settings-page', id: 'ytaf-page-sponsor', style: { display: 'none' }});
+    protectSettingsScroll(window, pageSponsor);
     pageSponsor.appendChild(createConfigCheckbox('enableSponsorBlock'));
   
     const elmBlock = createElement('blockquote', {},
@@ -704,6 +707,7 @@ function createOptionsPanel() {
     function buildShortcutsPage() {
   // --- Page 3: Shortcuts ---
     pageShortcuts = createElement('div', { class: 'ytaf-settings-page', id: 'ytaf-page-shortcuts', style: { display: 'none' }});
+    protectSettingsScroll(window, pageShortcuts);
     shortcutKeys.forEach(key => { pageShortcuts.appendChild(createShortcutControl(key)); });
     elmContainer.appendChild(pageShortcuts);
   
@@ -711,6 +715,7 @@ function createOptionsPanel() {
     function buildUITweaksPage() {
   // --- Page 4: UI Tweaks ---
     pageUITweaks = createElement('div', { class: 'ytaf-settings-page', id: 'ytaf-page-ui-tweaks', style: { display: 'none' }});
+    protectSettingsScroll(window, pageUITweaks);
   
     const playerUITweaks = [
         createOpacityControl('videoShelfOpacity'),

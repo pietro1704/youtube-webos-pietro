@@ -15,6 +15,14 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ytaf-scroll-'));
 const fixture = `<!doctype html><html><body><ytlr-app><button id="native">Native control</button></ytlr-app>
 <script>
 window.launchParams = '{}';
+// YouTube's actual window capture listener (observed on the C5) cancels native
+// scrolling globally, including the independently injected settings pages.
+window.addEventListener('scroll', function(event) {
+  if (event.target instanceof Element && (event.target.scrollLeft || event.target.scrollTop)) {
+    event.target.scrollLeft = 0;
+    event.target.scrollTop = 0;
+  }
+}, {capture:true});
 window.fetch = () => Promise.reject(new Error('offline fixture'));
 localStorage.setItem('ytaf-configuration', JSON.stringify({enableAdBlock:false,enableSponsorBlock:false,
   enableReturnYouTubeDislike:false,enableAutoLogin:false,enableLegacyEmojiFix:false,dearrowMode:'off'}));
@@ -134,6 +142,19 @@ const server = http.createServer((req, res) => {
       })()`);
       assert.ok(visible, 'last setting is readable on tab ' + tab);
     }
+    // Explicit resets are legitimate, and YouTube retains ownership of its own
+    // scrollers. Cancelling a host callback must never mutate a different page.
+    const isolation = await evaluate(`(() => {
+      const page = Array.from(document.querySelectorAll('.ytaf-settings-page')).find(p => getComputedStyle(p).display !== 'none');
+      page.scrollTop = 0;
+      const native = document.createElement('div');
+      native.style.cssText = 'height:20px;overflow:auto';
+      native.innerHTML = '<div style="height:200px"></div>';
+      document.body.appendChild(native); native.scrollTop = 80;
+      native.dispatchEvent(new Event('scroll'));
+      const result = {reset:page.scrollTop, native:native.scrollTop}; native.remove(); return result;
+    })()`);
+    assert.deepEqual(isolation, {reset:0,native:0}, 'explicit reset and native host behavior remain intact');
     console.log('PASS settings scroll, remote reachability, focus visibility, close/reopen and wheel at ' + width + '×' + height);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
