@@ -11,7 +11,8 @@ export class AudioEngine {
     chunkS = 0.1,
     audioOffsetMs = 0,
     onError,
-    createStretcher
+    createStretcher,
+    createNativeAudioSource
   }) {
     this.win = win;
     this.speed = speed;
@@ -99,7 +100,7 @@ export class AudioEngine {
       this.anchorPending = true;
       this.stalledTicks = 0;
     };
-    this.output = createAudioOutput({ win, context: this.ctx, source: this.gain,
+    this.output = createAudioOutput({ win, context: this.ctx, source: this.gain, createNativeAudioSource,
       onError: error => this.reportError(error) });
   }
 

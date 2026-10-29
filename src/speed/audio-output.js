@@ -1,15 +1,19 @@
+import { createNativeAudioRoute } from './native-audio-route.js';
+
 /** Own the PCM output route. A playing media element keeps webOS's eARC mixer
  * connected when the accelerated video has no native audio SourceBuffer. */
-export function createAudioOutput({ win, context, source, onError }) {
+export function createAudioOutput({ win, context, source, onError, createNativeAudioSource }) {
   let closed = false;
   let destination = null;
   let element = null;
+  let nativeRoute = null;
   const mediaOutput = typeof context.createMediaStreamDestination === 'function' && !!win.document?.body;
   const type = mediaOutput ? 'media-stream' : 'audio-context';
 
   function destroy() {
     if (closed) return;
     closed = true;
+    nativeRoute?.destroy();
     try { source.disconnect?.(); } catch { /* already disconnected */ }
     if (element) {
       element.removeEventListener('error', failed);
@@ -38,6 +42,9 @@ export function createAudioOutput({ win, context, source, onError }) {
       win.document.body.appendChild(element);
       source.connect(destination);
       Promise.resolve(element.play()).catch(failed);
+      if (createNativeAudioSource) {
+        nativeRoute = createNativeAudioRoute({ win, createNativeAudioSource, onError: failed });
+      }
     } else {
       source.connect(context.destination);
     }

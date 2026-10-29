@@ -205,3 +205,25 @@ test('audio buffer events retain native EventTarget identity', async () => {
   assert.equal(buffer.updating, false);
   hook.uninstall();
 });
+
+test('the accelerated engine can open a native audio route without recursion or releasing itself', () => {
+  const win = makeWindow();
+  let options, sinks = 0, releases = 0;
+  const hook = installMseHook(win, {
+    getSpeed: () => 2,
+    createAudioSink(value) { options = value; sinks++; return { configure() {}, push() {}, reset() {}, discard() {} }; },
+    onRateRequest() {}, onError(error) { throw error; }, onNativeAudio() { releases++; }
+  });
+  try {
+    new win.MediaSource().addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    assert.equal(typeof options.createNativeAudioSource, 'function');
+    const native = options.createNativeAudioSource();
+    const element = new win.HTMLMediaElement();
+    element.src = native.url;
+    const buffer = native.mediaSource.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    assert.equal(Object.getPrototypeOf(buffer), FakeSourceBuffer.prototype);
+    assert.equal(Object.hasOwn(element, 'currentTime'), false);
+    assert.equal(sinks, 1);
+    assert.equal(releases, 0);
+  } finally { hook.uninstall(); }
+});

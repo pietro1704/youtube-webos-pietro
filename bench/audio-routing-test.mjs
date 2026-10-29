@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AudioEngine } from '../src/speed/audio-engine.js';
 
-function harness({ rejectPlay = false, streamSupported = true, throwStream = false } = {}) {
+function harness({ rejectPlay = false, streamSupported = true, throwStream = false, nativeRoute = false } = {}) {
   const errors = [], connections = [], elements = [];
   let rejectPending;
+  const revoked = [], nativeBytes = [];
+  const nativeBuffer = Object.assign(new EventTarget(), { appendBuffer(bytes) { nativeBytes.push(bytes); this.dispatchEvent(new Event('updateend')); } });
+  const nativeSource = Object.assign(new EventTarget(), { addSourceBuffer: () => nativeBuffer, endOfStream() {} });
   const track = { stopped: false, stop() { this.stopped = true; } };
   const stream = { getTracks: () => [track] };
   const destination = { stream };
@@ -15,19 +18,20 @@ function harness({ rejectPlay = false, streamSupported = true, throwStream = fal
     if (throwStream) throw new Error('stream unavailable');
     return destination;
   };
-  const win = { AudioContext: function () { return ctx; }, setInterval: () => 1, clearInterval() {},
+  const win = { atob, setTimeout: () => 1, clearTimeout() {}, URL: { revokeObjectURL(url) { revoked.push(url); } }, AudioContext: function () { return ctx; }, setInterval: () => 1, clearInterval() {},
     document: { body: { appendChild(el) { el.connected = true; } }, createElement(name) {
       assert.equal(name, 'audio');
       const el = Object.assign(new EventTarget(), { srcObject: null, paused: true, volume: 1, muted: false,
-        setAttribute() {}, play() {
+        setAttribute() {}, removeAttribute(key) { delete this[key]; }, load() {}, play() {
           this.paused = false;
           return new Promise((resolve, reject) => { rejectPending = reject; if (!rejectPlay) resolve(); });
         }, pause() { this.paused = true; }, remove() { this.connected = false; } });
       elements.push(el); return el;
     } }
   };
-  const engine = new AudioEngine({ win, speed: 2, onError: error => errors.push(error) });
-  return { engine, errors, connections, elements, track, ctx, destination, gain,
+  const engine = new AudioEngine({ win, speed: 2,
+    createNativeAudioSource: nativeRoute ? () => ({ mediaSource: nativeSource, url: 'blob:native' }) : undefined, onError: error => errors.push(error) });
+  return { engine, errors, connections, elements, track, ctx, destination, gain, nativeSource, nativeBytes, revoked,
     reject: () => rejectPending(new Error('play rejected')) };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
@@ -94,4 +98,21 @@ test('platforms without stream output retain direct output compatibility', async
   assert.deepEqual(h.connections, [h.ctx.destination]);
   assert.deepEqual(h.errors, []);
   h.engine.destroy();
+});
+
+
+test('engine owns both PCM and native route and tears both down on replacement', async () => {
+  const h = harness({ nativeRoute: true }); await settle();
+  h.nativeSource.dispatchEvent(new Event('sourceopen'));
+  assert.equal(h.elements.length, 2);
+  assert.equal(h.nativeBytes.length, 1);
+  assert.ok(h.nativeBytes[0].length > 0);
+  assert.equal(h.elements[1].loop, true);
+  assert.ok(h.elements.every(el => el.connected && !el.paused));
+  assert.deepEqual(h.connections, [h.destination]);
+  h.engine.destroy();
+  assert.ok(h.elements.every(el => !el.connected && el.paused));
+  assert.equal(h.track.stopped, true);
+  assert.deepEqual(h.revoked, ['blob:native']);
+  assert.deepEqual(h.errors, []);
 });
