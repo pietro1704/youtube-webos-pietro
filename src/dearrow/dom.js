@@ -61,11 +61,12 @@ function titleNode(tile) {
   return tile.querySelector('#video-title,[data-title],yt-formatted-string');
 }
 
-function thumbnailTarget(tile) {
+function thumbnailTarget(tile, state) {
   const images = tile.querySelectorAll('img');
   for (let i = 0; i < images.length; i++) {
     const src = images[i].getAttribute('src') || '';
-    if (/ytimg\.com|youtube\.com/.test(src)) {
+    if (/ytimg\.com|youtube\.com/.test(src) ||
+        (state?.image?.node === images[i] && state.appliedSrc !== null && src === state.appliedSrc)) {
       return { node: images[i], kind: 'src' };
     }
   }
@@ -74,7 +75,8 @@ function thumbnailTarget(tile) {
   );
   for (let i = 0; i < backgrounds.length; i++) {
     const value = backgrounds[i].style.backgroundImage || '';
-    if (/ytimg\.com|youtube\.com/.test(value)) {
+    if (/ytimg\.com|youtube\.com/.test(value) ||
+        (state?.image?.node === backgrounds[i] && state.appliedSrc !== null && value === state.appliedSrc)) {
       return { node: backgrounds[i], kind: 'background' };
     }
   }
@@ -124,13 +126,16 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
 
   function stateFor(tile, videoId) {
     let state = states.get(tile);
-    if (state && state.videoId !== videoId) {
+    const title = titleNode(tile);
+    const image = thumbnailTarget(tile, state);
+    if (state && (state.videoId !== videoId || state.title !== title ||
+        state.image?.node !== image?.node || state.image?.kind !== image?.kind)) {
       restore(state);
       states.delete(tile);
       state = null;
     }
     if (!state) {
-      const title = titleNode(tile);
+      // restore() may have returned a reused image to its native URL.
       const image = thumbnailTarget(tile);
       state = {
         videoId,
@@ -147,6 +152,20 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
       };
       states.set(tile, state);
     }
+    // YouTube can reuse the nodes while replacing their native content.
+    // Only our own exact applied values remain owned by this adapter.
+    if (title && title.textContent !== state.appliedTitle) {
+      state.originalTitle = title.textContent;
+      state.appliedTitle = null;
+    }
+    if (state.image && thumbnailValue(state.image) !== state.appliedSrc) {
+      state.originalSrc = thumbnailValue(state.image);
+      state.originalSrcset = state.image.kind === 'src'
+        ? state.image.node.getAttribute('srcset') : null;
+      state.appliedSrc = null;
+    } else if (state.image?.kind === 'src' && state.image.node.hasAttribute('srcset')) {
+      state.originalSrcset = state.image.node.getAttribute('srcset');
+    }
     return state;
   }
 
@@ -159,6 +178,10 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
       !branding
     )
       return;
+    if (stateFor(tile, state.videoId) !== state) {
+      scheduleRefresh();
+      return;
+    }
     if (
       (mode === 'titles' || mode === 'titles_thumbnails') &&
       branding.title &&
@@ -236,6 +259,7 @@ export function createDeArrowDomAdapter({ root, client, getMode }) {
       attributeFilter: [
         'href',
         'src',
+        'srcset',
         'style',
         'data-video-id',
         'video-id',
