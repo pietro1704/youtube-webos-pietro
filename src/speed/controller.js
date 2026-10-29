@@ -347,11 +347,6 @@ export function createSpeedController({
   function releaseAudioSink() {
     if (!activeSink) return;
     activeSink.engine.destroy();
-    if (activeSink.element)
-      activeSink.element.removeEventListener(
-        'volumechange',
-        activeSink.listener
-      );
     activeSink = null;
   }
 
@@ -368,17 +363,8 @@ export function createSpeedController({
 
     const engine = new AudioEngine({ win, speed, onError, createNativeAudioSource,
       audioOffsetMs: Number(configRead('audioSyncOffsetMs')) || 0 });
-    if (element) {
-      engine.attachVideo(element);
-      engine.setVolume(element.volume, element.muted);
-      const listener = () => {
-        engine.setVolume(element.volume, element.muted);
-      };
-      element.addEventListener('volumechange', listener);
-      activeSink = { engine, element, listener };
-    } else {
-      activeSink = { engine, element: null, listener: null };
-    }
+    if (element) engine.attachVideo(element);
+    activeSink = { engine };
     return engine;
   }
 

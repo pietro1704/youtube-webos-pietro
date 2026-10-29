@@ -34,6 +34,9 @@ jobs:
       - name: Build and test modern bundle
         if: matrix.variant == 'modern'
         run: npm run build:modern && npm run test:modern
+      - name: Native audio playback in Chrome
+        if: matrix.variant == 'modern'
+        run: npm run test:native-audio-browser
       - run: npm run package
       - run: npm run manifest
 

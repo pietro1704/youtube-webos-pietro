@@ -104,8 +104,25 @@ export class AudioEngine {
       onError: error => this.reportError(error) });
   }
 
+  detachVideo() {
+    if (!this.video) return;
+    this.video.removeEventListener('pause', this.onPause);
+    this.video.removeEventListener('waiting', this.onWaiting);
+    this.video.removeEventListener('seeking', this.onSeeking);
+    this.video.removeEventListener('playing', this.onPlaying);
+    this.video.removeEventListener('volumechange', this.onVolumeChange);
+    this.video = null;
+  }
+
   attachVideo(el) {
+    if (this.destroyed || this.video === el) return;
+    this.detachVideo();
+    this.stopFuture();
     this.video = el;
+    if (!el) return;
+    this.onVolumeChange = () => this.setVolume(el.volume, el.muted);
+    this.onVolumeChange();
+    el.addEventListener('volumechange', this.onVolumeChange);
     this.video.addEventListener('pause', this.onPause);
     this.video.addEventListener('waiting', this.onWaiting);
     this.video.addEventListener('seeking', this.onSeeking);
@@ -330,14 +347,10 @@ export class AudioEngine {
   }
 
   destroy() {
+    if (this.destroyed) return;
     this.destroyed = true;
     this.win.clearInterval(this.tickInterval);
-    if (this.video) {
-      this.video.removeEventListener('pause', this.onPause);
-      this.video.removeEventListener('waiting', this.onWaiting);
-      this.video.removeEventListener('seeking', this.onSeeking);
-      this.video.removeEventListener('playing', this.onPlaying);
-    }
+    this.detachVideo();
     this.stopFuture();
     this.output.destroy();
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();

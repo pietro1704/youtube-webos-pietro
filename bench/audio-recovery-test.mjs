@@ -168,3 +168,31 @@ test('reclamation inside decode does not continue using a closed decoder', async
   assert.ok(h.started.some(buffer => buffer.samples.some(value => value > 0)));
   h.engine.destroy();
 });
+
+test('late video binding schedules retained PCM and owns volume listeners across replacement', async () => {
+  const h = harness();
+  h.engine.attachVideo(null);
+  h.engine.configure(cfg);
+  await settle();
+  h.fill();
+  h.engine.tick();
+  assert.equal(h.started.length, 0);
+  h.video.volume = 0.35; h.video.muted = false;
+  h.engine.attachVideo(h.video);
+  h.engine.attachVideo(h.video);
+  h.advance();
+  assert.ok(h.started.length > 0, 'buffered audio starts after the video is attached');
+  assert.equal(h.engine.gain.gain.value, 0.35);
+  const next = Object.assign(new EventTarget(), { currentTime: 10, paused: false, volume: 0.8, muted: true });
+  h.engine.attachVideo(next);
+  assert.equal(h.engine.gain.gain.value, 0);
+  h.video.volume = 1; h.video.dispatchEvent(new Event('volumechange'));
+  assert.equal(h.engine.gain.gain.value, 0, 'old video cannot change new output');
+  next.muted = false; next.dispatchEvent(new Event('volumechange'));
+  assert.equal(h.engine.gain.gain.value, 0.8);
+  h.engine.destroy();
+  next.volume = 0.1; next.dispatchEvent(new Event('volumechange'));
+  assert.equal(h.engine.gain.gain.value, 0.8, 'destroy removes listener');
+  h.engine.attachVideo(next);
+  assert.equal(h.engine.video, null, 'destroyed engine cannot reattach');
+});

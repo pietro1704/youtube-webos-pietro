@@ -11,7 +11,11 @@ class FakeSourceBuffer extends EventTarget {
     this._buffered = { length: 0, start: () => 0, end: () => 0 };
   }
 
-  appendBuffer() {}
+  appendBuffer(data) {
+    this.lastAppend = data;
+    this.updating = true;
+    Promise.resolve().then(() => { this.updating = false; this.dispatchEvent(new Event('updateend')); });
+  }
   remove() {}
 
   get timestampOffset() {
@@ -37,8 +41,10 @@ class FakeSourceBuffer extends EventTarget {
   }
 }
 
-class FakeMediaSource {
+class FakeMediaSource extends EventTarget {
   constructor() {
+    super();
+    this.readyState = 'open';
     this._buffers = [];
     this._duration = Number.NaN;
   }
@@ -112,6 +118,7 @@ function makeWindow() {
     HTMLMediaElement: FakeMediaElement,
     EventTarget,
     Event,
+    atob,
     URL: {
       createObjectURL(object) {
         const url = `blob:test-${nextUrl++}`;
@@ -200,13 +207,13 @@ test('audio buffer events retain native EventTarget identity', async () => {
   let target = null;
   buffer.addEventListener('updateend', event => { target = event.target; });
   buffer.appendBuffer(new Uint8Array());
-  await Promise.resolve();
+  for (let i = 0; i < 4; i++) await Promise.resolve();
   assert.equal(target, buffer);
   assert.equal(buffer.updating, false);
   hook.uninstall();
 });
 
-test('the accelerated engine can open a native audio route without recursion or releasing itself', () => {
+test('accelerated native audio belongs to the video MediaSource without a second player', async () => {
   const win = makeWindow();
   let options, sinks = 0, releases = 0;
   const hook = installMseHook(win, {
@@ -215,15 +222,49 @@ test('the accelerated engine can open a native audio route without recursion or 
     onRateRequest() {}, onError(error) { throw error; }, onNativeAudio() { releases++; }
   });
   try {
-    new win.MediaSource().addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
-    assert.equal(typeof options.createNativeAudioSource, 'function');
-    const native = options.createNativeAudioSource();
-    const element = new win.HTMLMediaElement();
-    element.src = native.url;
-    const buffer = native.mediaSource.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
-    assert.equal(Object.getPrototypeOf(buffer), FakeSourceBuffer.prototype);
-    assert.equal(Object.hasOwn(element, 'currentTime'), false);
+    const ms = new win.MediaSource();
+    const video = ms.addSourceBuffer('video/mp4; codecs="avc1.4d401f"');
+    const audio = ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    assert.equal(ms._buffers.length, 2, 'video and silent native audio must share one MediaSource');
+    assert.equal(options.createNativeAudioSource, undefined, 'no competing native player');
+    assert.equal(ms.sourceBuffers.length, 2, 'internal audio must not leak as a third player buffer');
+    assert.equal(ms.sourceBuffers.item(0), video);
+    assert.equal(ms.sourceBuffers.item(1), audio);
+    assert.notEqual(ms.sourceBuffers.item(1), ms._buffers[1]);
     assert.equal(sinks, 1);
     assert.equal(releases, 0);
+    await Promise.resolve();
+  } finally { hook.uninstall(); }
+});
+
+
+test('an audio sink buffered before src assignment is bound to the actual video when attached', () => {
+  const win = makeWindow(), attached = [];
+  const hook = installMseHook(win, { getSpeed: () => 2, onRateRequest() {}, onError(error) { throw error; },
+    createAudioSink: () => ({ configure() {}, push() {}, reset() {}, discard() {}, attachVideo(element) { attached.push(element); } }) });
+  try {
+    const ms = new win.MediaSource();
+    ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    assert.deepEqual(attached, []);
+    const video = new win.HTMLMediaElement(); video.src = win.URL.createObjectURL(ms);
+    assert.deepEqual(attached, [video], 'the decoding sink must not remain unbound during autoplay');
+  } finally { hook.uninstall(); }
+});
+
+test('closing a source cancels pending updates and rejects later writes to its sink', async () => {
+  const { win, hook } = installAt(2);
+  try {
+    const ms = new win.MediaSource();
+    const buffer = ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+    buffer.appendBuffer(new Uint8Array());
+    ms.dispatchEvent(new Event('sourceclose'));
+    let late = 0;
+    buffer.addEventListener('updateend', () => late++);
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(buffer.updating, false);
+    assert.equal(late, 0);
+    for (const write of [() => buffer.appendBuffer(new Uint8Array()), () => buffer.remove(0, 1), () => buffer.changeType('audio/webm')]) {
+      assert.throws(write, { name: 'InvalidStateError' });
+    }
   } finally { hook.uninstall(); }
 });
