@@ -252,7 +252,14 @@ export function installMseHook(
     } else if (isAudio) {
       const sink = createAudioSink({
         speed,
-        element: msToEl.get(this) || null
+        element: msToEl.get(this) || null,
+        createNativeAudioSource() {
+          const mediaSource = new win.MediaSource();
+          // This internal silent route must not enter our accelerated-audio
+          // interception or release the engine that owns it.
+          mediaSource.addSourceBuffer = mime => origAddSourceBuffer.call(mediaSource, mime);
+          return { mediaSource, url: origCreateObjectURL.call(win.URL, mediaSource) };
+        }
       });
       const fakeSb = new FakeAudioSourceBuffer(win, mime, speed, sink, onError);
       session.audio = fakeSb;
