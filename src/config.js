@@ -147,6 +147,7 @@ const configOptions = new Map([
   ['sbMode_filler', { default: 'seek_bar', desc: 'Filler/Tangents' }],
   ['sbMode_hook', { default: 'seek_bar', desc: 'Hook/Greetings' }],
   ['sbMode_highlight', { default: 'seek_bar', desc: 'Highlight' }],
+  ['hideAnnotations', { default: true, desc: 'Hide Video Annotations and Channel Logo' }],
   ['hideEndcards', { default: false, desc: 'Hide Endcards' }],
   ['enableAutoLogin', { default: true, desc: 'Bypass Nag Screens' }],
   ['logoStyle', { default: 'default', desc: 'YouTube Logo' }],

@@ -1,3 +1,4 @@
+import { prunePlayerAnnotations, syncAnnotationVisibility } from './player-annotations.js';
 import { configGetAll, configAddChangeListener } from './config';
 import { isShortsPage } from './utils';
 import { getWebOSVersion } from './webos-utils';
@@ -58,6 +59,7 @@ const CONFIG_KEYS = {
   GUEST_PROMPTS: 'hideGuestSignInPrompts',
   EMOJI_FIX: 'enableLegacyEmojiFix',
   ENDCARDS: 'hideEndcards',
+  ANNOTATIONS: 'hideAnnotations',
   THUMBNAILS: 'upgradeThumbnails'
 };
 
@@ -120,7 +122,7 @@ function recomputeFilterFlags() {
     cfgFlags.removeMostRelevant ||
     cfgFlags.hideGuestPrompts ||
     cfgFlags.enableLegacyEmojiFix ||
-    cfgFlags.hideEndcards ||
+    cfgFlags.hideEndcards || cfgSnapshot.hideAnnotations ||
     cfgFlags.upgradeThumbnails
   );
 }
@@ -410,6 +412,7 @@ function hookedParse(text, reviver) {
   const data = origParse.call(this, text, reviver);
   if (!data || typeof data !== 'object') return data;
   if (cfgFlags.enableAdBlock) pruneYouTubeAds(data);
+  if (cfgSnapshot.hideAnnotations) prunePlayerAnnotations(data);
   if (text.length < 500 && !cfgFlags.removeGlobalShorts && !cfgFlags.removeLiveVideos &&
       !cfgFlags.removeTopLiveGames && !cfgFlags.removeMostRelevant && !cfgFlags.hideGuestPrompts &&
       !cfgFlags.hideEndcards) return data;
@@ -998,7 +1001,7 @@ export function parseHookRequired() {
     cfgSnapshot[CONFIG_KEYS.LIVE_GAMES] ||
     cfgSnapshot[CONFIG_KEYS.MOST_RELEVANT] ||
     cfgSnapshot[CONFIG_KEYS.GUEST_PROMPTS] ||
-    cfgSnapshot[CONFIG_KEYS.ENDCARDS] ||
+    cfgSnapshot[CONFIG_KEYS.ENDCARDS] || cfgSnapshot.hideAnnotations ||
     cfgEmojiFixEffective ||
     thumbnailHookRequired()
   );
@@ -1033,8 +1036,10 @@ export function destroyAdblock() {
 }
 
 initAdblock();
-installYouTubeNetworkRules(window, () => !!cfgSnapshot.enableAdBlock);
-installInitialResponseRules(window, () => !!cfgSnapshot.enableAdBlock);
+installYouTubeNetworkRules(window, () => !!cfgSnapshot.enableAdBlock, () => !!cfgSnapshot.hideAnnotations);
+installInitialResponseRules(window, () => !!cfgSnapshot.enableAdBlock, () => !!cfgSnapshot.hideAnnotations);
+syncAnnotationVisibility(document, cfgSnapshot.hideAnnotations);
+configAddChangeListener('hideAnnotations', () => syncAnnotationVisibility(document, cfgSnapshot.hideAnnotations));
 
 if (cfgSnapshot[CONFIG_KEYS.ADBLOCK] && cfgSnapshot[CONFIG_KEYS.TRACKING]) {
   try {

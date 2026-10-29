@@ -1,3 +1,4 @@
+import { prunePlayerAnnotations } from '../player-annotations.js';
 import { prunePromotions } from './promotions.js';
 const parseResponse = JSON.parse;
 import { objectPruneFn } from './object-prune.js';
@@ -40,15 +41,18 @@ export function shouldBlockRequest(raw, base) {
   }
 }
 
-export function rewriteYouTubeResponse(text, rawUrl, base) {
+export function rewriteYouTubeResponse(text, rawUrl, base, ads = true, annotations = false) {
   const url = youtubeUrl(rawUrl, base);
   if (!url || typeof text !== 'string') return text;
   if (/\/(?:player|get_watch|browse|next)$/.test(url.pathname)) {
     try {
       const data = parseResponse(text);
-      if (prunePromotions(data)) text = JSON.stringify(data);
+      const removedPromotions = ads && prunePromotions(data);
+      const removedAnnotations = annotations && prunePlayerAnnotations(data);
+      if (removedPromotions || removedAnnotations) text = JSON.stringify(data);
     } catch { /* malformed responses pass through unchanged */ }
   }
+  if (!ads) return text;
   // trusted-replace-fetch-response / trusted-replace-xhr-response and the
   // corresponding HTML-filtering replace rules, all from the pinned uAssets.
   if (/\/(?:player|get_watch)$/.test(url.pathname) ||
@@ -69,26 +73,26 @@ export function rewriteYouTubeResponse(text, rawUrl, base) {
   return text;
 }
 
-export function installYouTubeNetworkRules(win, enabled) {
+export function installYouTubeNetworkRules(win, enabled, hideAnnotations = () => false) {
   const nativeFetch = win.fetch;
   const NativeXHR = win.XMLHttpRequest;
   const base = win.location.href;
   if (typeof nativeFetch === 'function') {
     win.fetch = function (resource, init) {
       const url = resource && resource.url ? resource.url : String(resource);
-      if (!enabled()) return nativeFetch.apply(this, arguments);
+      if (!enabled() && !hideAnnotations()) return nativeFetch.apply(this, arguments);
       const signal = init && init.signal !== undefined ? init.signal : resource && resource.signal;
       if (signal && signal.aborted) return nativeFetch.apply(this, arguments);
-      if (shouldBlockRequest(url, base)) {
+      if (enabled() && shouldBlockRequest(url, base)) {
         return Promise.reject(new TypeError('Failed to fetch'));
       }
       const original = nativeFetch.apply(this, arguments);
       const parsed = youtubeUrl(url, base);
       if (!parsed || !/\/(?:player|get_watch|watch|playlist|reel_watch_sequence|browse|next)$/.test(parsed.pathname)) return original;
       return original.then(async (response) => {
-        if (!enabled() || !response.ok || response.type === 'opaque') return response;
+        if ((!enabled() && !hideAnnotations()) || !response.ok || response.type === 'opaque') return response;
         const text = await response.clone().text();
-        const next = rewriteYouTubeResponse(text, url, base);
+        const next = rewriteYouTubeResponse(text, url, base, enabled(), hideAnnotations());
         if (next === text) return response;
         const headers = new win.Headers(response.headers);
         headers.delete('content-length');
@@ -140,15 +144,19 @@ export function installYouTubeNetworkRules(win, enabled) {
       if (textDescriptor && textDescriptor.get) {
         Object.defineProperty(xhr, 'responseText', { configurable: true, get() {
           const text = textDescriptor.get.call(xhr);
-          return enabled() ? rewriteYouTubeResponse(text, requestUrl, base) : text;
+          return enabled() || hideAnnotations() ? rewriteYouTubeResponse(text, requestUrl, base, enabled(), hideAnnotations()) : text;
         } });
       }
       if (responseDescriptor && responseDescriptor.get) {
         Object.defineProperty(xhr, 'response', { configurable: true, get() {
           const value = responseDescriptor.get.call(xhr);
-          if (!enabled() || !youtubeUrl(requestUrl, base)) return value;
-          if (xhr.responseType === 'json') return pruneYouTubeAds(value);
-          return typeof value === 'string' ? rewriteYouTubeResponse(value, requestUrl, base) : value;
+          if ((!enabled() && !hideAnnotations()) || !youtubeUrl(requestUrl, base)) return value;
+          if (xhr.responseType === 'json') {
+            if (enabled()) pruneYouTubeAds(value);
+            if (hideAnnotations()) prunePlayerAnnotations(value);
+            return value;
+          }
+          return typeof value === 'string' ? rewriteYouTubeResponse(value, requestUrl, base, enabled(), hideAnnotations()) : value;
         } });
       }
       return xhr;
@@ -161,19 +169,24 @@ export function installYouTubeNetworkRules(win, enabled) {
   }
 }
 
-export function installInitialResponseRules(win, enabled) {
+export function installInitialResponseRules(win, enabled, hideAnnotations = () => false) {
+  const filter = value => {
+    if (enabled()) pruneYouTubeAds(value);
+    if (hideAnnotations()) prunePlayerAnnotations(value);
+    return value;
+  };
   for (const key of ['ytInitialPlayerResponse', 'playerResponse', 'ytInitialData']) {
     let value = win[key];
     const previous = Object.getOwnPropertyDescriptor(win, key);
     if (previous && previous.configurable === false) {
-      if (enabled()) pruneYouTubeAds(value);
+      filter(value);
       continue;
     }
     Object.defineProperty(win, key, {
       configurable: true,
       enumerable: true,
-      get() { return enabled() ? pruneYouTubeAds(value) : value; },
-      set(next) { value = enabled() ? pruneYouTubeAds(next) : next; }
+      get() { return filter(value); },
+      set(next) { value = filter(next); }
     });
   }
 }

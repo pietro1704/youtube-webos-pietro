@@ -110,5 +110,37 @@ const items = result => result.contents.sectionListRenderer.contents[0]
   codecApp.win.ytaf_showOptionsPanel(false);
   assert.equal(browseReloads, 1, 'closing settings on a browse page refreshes immediately');
   codecApp.win.close();
+  const annotationsApp = boot({ enableAdBlock: false, enableLegacyEmojiFix: false });
+  const aw = annotationsApp.win;
+  aw.ytaf_showOptionsPanel(true);
+  const toggle = checkbox(aw, 'Hide Video Annotations and Channel Logo');
+  assert.equal(toggle.checked, true, 'annotations are hidden by default');
+  assert.equal(toggle.disabled, false, 'independent of Ad Blocking');
+  const annotationPayload = annotationsApp.NS({
+    annotations: [{ playerAnnotationsExpandedRenderer: { featuredChannel: { watermark: { thumbnails: [] } } } }],
+    captions: { tracks: ['pt'] }, videoDetails: { videoId: 'keep' }
+  });
+  assert.equal(aw.JSON.parse(annotationPayload).annotations, undefined);
+  const watermark = aw.document.createElement('div');
+  watermark.className = 'ytp-iv-video-watermark';
+  const captions = aw.document.createElement('div');
+  captions.className = 'ytp-caption-window-container';
+  aw.document.body.appendChild(watermark); aw.document.body.appendChild(captions);
+  assert.equal(aw.getComputedStyle(watermark).display, 'none', 'late overlay is hidden by CSS');
+  assert.notEqual(aw.getComputedStyle(captions).display, 'none', 'captions stay visible');
+  toggle.click();
+  assert.equal(aw.JSON.parse(annotationPayload).annotations.length, 1);
+  assert.notEqual(aw.getComputedStyle(watermark).display, 'none', 'toggle restores overlays');
+  await wait(250);
+  const persistedAnnotations = JSON.parse(aw.localStorage.getItem('ytaf-configuration'));
+  assert.equal(persistedAnnotations.hideAnnotations, false);
+  const restored = boot(persistedAnnotations);
+  restored.win.ytaf_showOptionsPanel(true);
+  assert.equal(checkbox(restored.win, 'Hide Video Annotations and Channel Logo').checked, false);
+  restored.win.close();
+  toggle.click();
+  assert.equal(aw.JSON.parse(annotationPayload).annotations, undefined);
+  assert.equal(aw.JSON.parse(annotationPayload).videoDetails.videoId, 'keep');
+  aw.close();
   console.log('content preferences: independent toggles, hot hook install/removal, small guide and disabled identity passed');
 })().catch(error => { console.error(error); process.exit(1); });

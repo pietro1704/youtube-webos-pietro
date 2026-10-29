@@ -666,6 +666,7 @@ function createOptionsPanel() {
   createElement('div', { text: 'Audio offset applies to accelerated playback. Positive values advance audio; negative values delay it.', style: { color: '#aaa', fontSize: '1.6vh' } }),
   createVideoQualityControl(),
   createVideoCodecControl(),
+  createConfigCheckbox('hideAnnotations'),
   createConfigCheckbox('hideEndcards'),
   createConfigCheckbox('enableReturnYouTubeDislike')]));
   pageMain.appendChild(createSection('Interface', [createConfigCheckbox('enableAutoLogin'), createDeArrowControl(), createConfigCheckbox('upgradeThumbnails'), createThumbnailQualityControl(), createLogoControl(), createConfigCheckbox('showWatch'), createConfigCheckbox('enableOledCareMode'), createConfigCheckbox('disableNotifications')]));
