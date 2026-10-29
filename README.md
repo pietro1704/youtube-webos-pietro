@@ -191,3 +191,16 @@ To jump immediately into some specific video use:
 ```sh
 npm run launch -- -p '{"contentTarget":"v=F8PGWLvn1mQ"}'
 ```
+
+## Checagens graduais
+
+`npm run prettier-check` cobre workflows/actions, o preparador de release e
+`src/playback-preferences.js`. `.prettierignore` exclui dependências, pacotes
+gerados e evidências locais. O restante do código mantém sua formatação atual;
+o escopo pode crescer em alterações pequenas. O módulo de preferências também
+usa `@ts-check` com contratos JSDoc, verificados por `npm run type-check`.
+
+`npm run bench:metrics` produz medições locais informativas. Tempos em JSDOM
+não são metas ou evidência de desempenho da TV; o benchmark de hooks atual
+ainda escreve opções após carregar o bundle e não garante todos os filtros
+ativos. Mudanças de desempenho precisam de perfil reproduzível no hardware.

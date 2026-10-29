@@ -23,7 +23,7 @@
     "prepare": "husky",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
-    "prettier-check": "prettier --ignore-path .prettierignore --check .",
+    "prettier-check": "prettier --ignore-path .prettierignore --check .github src/playback-preferences.js tools/prepare-release.cjs .prettierrc.json",
     "test:native-audio-browser": "node bench/native-audio-track-browser.cjs",
     "test:modern": "node bench/test-runner.cjs modern",
     "test:perf": "node bench/run-perf-tests.cjs legacy",
