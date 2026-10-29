@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { installMseHook, SpeedTimeMap } from '../src/speed/mse-hook.js';
 
 class FakeSourceBuffer extends EventTarget {
@@ -124,6 +125,9 @@ function makeWindow() {
         const url = `blob:test-${nextUrl++}`;
         urls.set(url, object);
         return url;
+      },
+      revokeObjectURL(url) {
+        urls.delete(url);
       }
     }
   };
@@ -164,6 +168,34 @@ test('1.5x maps the hardware timeline while the physical rate stays 1x', () => {
   assert.deepEqual(rateRequests, [2]);
   assert.equal(video._playbackRate, 1);
   hook.uninstall();
+});
+
+test('revoked and closed native sources become collectible while the hook stays installed', () => {
+  const result = spawnSync(process.execPath, ['--expose-gc', 'bench/mse-source-lifetime-fixture.mjs'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test('revoking an attached URL preserves active errors but suppresses replaced-source callbacks', () => {
+  const win = makeWindow(), errors = [];
+  const hook = installMseHook(win, { getSpeed: () => 2, onError: e => errors.push(e), onRateRequest() {} });
+  try {
+    const video = new win.HTMLMediaElement(), first = new win.MediaSource();
+    const url = win.URL.createObjectURL(first); video.src = url;
+    const buffer = first.addSourceBuffer('video/mp4');
+    win.URL.revokeObjectURL(url);
+    // Split MP4 init triggers the production error-reporting path.
+    const broken = new Uint8Array([0, 0, 0, 100, 102, 116, 121, 112]);
+    buffer.appendBuffer(broken);
+    assert.equal(errors.length, 1, 'an active revoked URL must still report failures');
+    const second = new win.MediaSource(); video.src = win.URL.createObjectURL(second);
+    second.addSourceBuffer('video/mp4');
+    buffer.appendBuffer(broken);
+    assert.equal(errors.length, 1, 'a retired source cannot affect its replacement');
+    first.dispatchEvent(new Event('sourceclose'));
+    assert.equal(video.playbackRate, 2, 'closing the previous source preserves the new shim');
+    second.dispatchEvent(new Event('sourceclose'));
+    assert.equal(Object.hasOwn(video, 'currentTime'), false, 'closing the current source releases its shim');
+  } finally { hook.uninstall(); }
 });
 
 test('1x leaves the native media element and SourceBuffer untouched', () => {

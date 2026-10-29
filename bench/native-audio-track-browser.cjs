@@ -62,6 +62,7 @@ window.__testDone=(async()=>{
  async function append(sb,data){const done=once(sb,'updateend');sb.appendBuffer(data);await done;}
  async function load(){
   const ms=new MediaSource(),url=URL.createObjectURL(ms);const opened=once(ms,'sourceopen');video.src=url;await opened;
+  URL.revokeObjectURL(url); // Attached playback must survive releasing the URL registry entry.
   const a=ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
   const v=ms.addSourceBuffer('video/mp4; codecs="avc1.42c00a"');
   check(nativeBuffers.call(ms).length===2,'real native video and audio buffers');
