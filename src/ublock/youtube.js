@@ -1,3 +1,5 @@
+import { prunePromotions } from './promotions.js';
+const parseResponse = JSON.parse;
 import { objectPruneFn } from './object-prune.js';
 
 // uAssets/filters/filters.txt at 6ddd246494b8c630ee1a93e715090214cb073903.
@@ -14,6 +16,7 @@ export function pruneYouTubeAds(data) {
   if (!data || typeof data !== 'object') return data;
   objectPruneFn(data, RULESET.prune, '');
   objectPruneFn(data, RULESET.shorts, '');
+  prunePromotions(data);
   return data;
 }
 
@@ -40,6 +43,12 @@ export function shouldBlockRequest(raw, base) {
 export function rewriteYouTubeResponse(text, rawUrl, base) {
   const url = youtubeUrl(rawUrl, base);
   if (!url || typeof text !== 'string') return text;
+  if (/\/(?:player|get_watch|browse|next)$/.test(url.pathname)) {
+    try {
+      const data = parseResponse(text);
+      if (prunePromotions(data)) text = JSON.stringify(data);
+    } catch { /* malformed responses pass through unchanged */ }
+  }
   // trusted-replace-fetch-response / trusted-replace-xhr-response and the
   // corresponding HTML-filtering replace rules, all from the pinned uAssets.
   if (/\/(?:player|get_watch)$/.test(url.pathname) ||
@@ -75,7 +84,7 @@ export function installYouTubeNetworkRules(win, enabled) {
       }
       const original = nativeFetch.apply(this, arguments);
       const parsed = youtubeUrl(url, base);
-      if (!parsed || !/\/(?:player|get_watch|watch|playlist|reel_watch_sequence)$/.test(parsed.pathname)) return original;
+      if (!parsed || !/\/(?:player|get_watch|watch|playlist|reel_watch_sequence|browse|next)$/.test(parsed.pathname)) return original;
       return original.then(async (response) => {
         if (!enabled() || !response.ok || response.type === 'opaque') return response;
         const text = await response.clone().text();
@@ -153,7 +162,7 @@ export function installYouTubeNetworkRules(win, enabled) {
 }
 
 export function installInitialResponseRules(win, enabled) {
-  for (const key of ['ytInitialPlayerResponse', 'playerResponse']) {
+  for (const key of ['ytInitialPlayerResponse', 'playerResponse', 'ytInitialData']) {
     let value = win[key];
     const previous = Object.getOwnPropertyDescriptor(win, key);
     if (previous && previous.configurable === false) {

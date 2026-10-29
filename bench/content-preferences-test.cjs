@@ -85,14 +85,27 @@ const items = result => result.contents.sectionListRenderer.contents[0]
   const codecParse = codecApp.win.JSON.parse;
   assert.notEqual(codecParse, initialParse, 'fixture must install the actual codec parser');
   const ads = checkbox(codecApp.win, 'Ad Blocking');
+  const promotion = codecApp.NS({ contents: [
+    { feedNudgeRenderer: { button: { urlEndpoint: { url: '/premiumlite' } } } },
+    { tileRenderer: { videoId: 'organic', title: 'Premium Lite review' } }
+  ], auxiliaryUi: { messageRenderers: { upsellDialogRenderer: {} } } });
+  assert.equal(codecApp.win.JSON.parse(promotion).contents.length, 1,
+    'small promotion responses are filtered by the actual bundle');
+
   let browseReloads = 0;
   codecApp.win.document.querySelector('ytlr-app').addEventListener('innertube-command', () => { browseReloads++; });
   ads.click();
+  assert.equal(codecApp.win.JSON.parse(promotion).contents.length, 2,
+    'turning Ad Blocking off preserves promotions');
   assert.equal(codecApp.win.JSON.parse, codecParse,
     'disabling content filtering must retain downstream codec hooks');
   assert.equal(items(codecApp.win.JSON.parse(response(codecApp.NS))).length, 4);
   ads.click();
   assert.equal(items(codecApp.win.JSON.parse(response(codecApp.NS))).length, 3);
+  const cleanPromo = codecApp.win.JSON.parse(promotion);
+  assert.equal(cleanPromo.contents.length, 1);
+  assert.equal(cleanPromo.contents[0].tileRenderer.videoId, 'organic');
+  assert.equal(cleanPromo.auxiliaryUi.messageRenderers.upsellDialogRenderer, undefined);
   await wait(550);
   codecApp.win.ytaf_showOptionsPanel(false);
   assert.equal(browseReloads, 1, 'closing settings on a browse page refreshes immediately');
