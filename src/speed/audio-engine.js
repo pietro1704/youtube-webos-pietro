@@ -39,6 +39,8 @@ export class AudioEngine {
 
     this.video = null;
     this.decoder = null;
+    this.decoderInputEnd = null;
+    this.decoderStartPts = -Infinity;
     this.cfg = null;
     this.configureId = 0;
     this.configPending = false;
@@ -90,6 +92,8 @@ export class AudioEngine {
       this.stalledTicks = 0;
       this.decodeGen++;
       this.sentToDecoder.clear();
+      this.decoderInputEnd = null;
+      this.decoderStartPts = -Infinity;
       if (this.decoder && this.decoder.state === 'configured') {
         this.decoder.reset();
         this.decoder.configure(this.cfg);
@@ -195,6 +199,7 @@ export class AudioEngine {
           error: (e) => this.onDecoderError(decoder, e)
         });
         this.decoder = decoder;
+        this.decoderInputEnd = null;
         this.decoder.configure(cfg);
         this.decodeGen++;
         this.sentToDecoder.clear();
@@ -340,6 +345,8 @@ export class AudioEngine {
     this.pcm = [];
     this.sentToDecoder.clear();
     this.decodeGen++;
+    this.decoderInputEnd = null;
+    this.decoderStartPts = -Infinity;
     if (this.decoder && this.decoder.state === 'configured') {
       this.decoder.reset();
       this.decoder.configure(this.cfg);
@@ -407,7 +414,7 @@ export class AudioEngine {
     const endUs = Math.round(endT * 1e6);
 
     for (
-      let i = this.lowerBound(currUs - 100000);
+      let i = this.lowerBound(Math.max(currUs - 100000, this.decoderStartPts));
       i < this.chunks.length;
       i++
     ) {
@@ -415,10 +422,25 @@ export class AudioEngine {
       if (c.pts > endUs) break;
       const key = `${this.decodeGen}:${c.pts}`;
       if (!this.sentToDecoder.has(key)) {
+        // WebCodecs Opus interpolates output timestamps across decode calls.
+        // After a buffering/clock jump, skipping encoded packets without
+        // restarting leaves all subsequent PCM behind the video indefinitely.
+        if (this.decoderInputEnd !== null && Math.abs(c.pts - this.decoderInputEnd) > 2000) {
+          // Drain earlier packets first and retain their PCM: a gap can be
+          // ahead of the playhead, where that audio is still needed.
+          if (this.decoder.decodeQueueSize > 0) return;
+          this.decoderStartPts = c.pts;
+          this.decoder.close();
+          this.decoder = null;
+          this.decoderInputEnd = null;
+          this.configure(this.cfg);
+          return;
+        }
         this.sentToDecoder.add(key);
         const decoder = this.decoder;
         try {
           decoder.decode(c.chunk);
+          this.decoderInputEnd = c.pts + c.dur;
         } catch (error) {
           this.onDecoderError(decoder, error);
           return;

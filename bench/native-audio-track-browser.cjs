@@ -1,3 +1,5 @@
+// Generated tone fixture: ffmpeg -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1
+// -c:a libopus -b:a 32k timeline-tone.webm
 // Generated black 64x64 H.264 fixture; no external network or TV required.
 // ffmpeg -f lavfi -i color=c=black:s=64x64:r=30 -t 4 -an -c:v libx264
 // -profile:v baseline -pix_fmt yuv420p -movflags +frag_keyframe+empty_moov+default_base_moof -g 30 fixture.mp4
@@ -17,9 +19,38 @@ let browser, socket;
 const fixture = `<!doctype html><video id="video" muted></video><script type="module">
 import { installMseHook } from '/src/speed/mse-hook.js';
 import { silentAacBase64 } from '/src/speed/silent-aac.js';
+import { AudioEngine } from '/src/speed/audio-engine.js';
+import { audioConfigFromWebmInit, demuxClusters, findTimecodeScale } from '/src/speed/containers.js';
 const check=(ok,msg)=>{if(!ok)throw Error(msg)};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const once=(target,name)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(name+' timeout')),8000);target.addEventListener(name,e=>{clearTimeout(timer);resolve(e)},{once:true})});
+async function audioTimelineGaps(){
+ const bytes=new Uint8Array(await(await fetch('/bench/fixtures/timeline-tone.webm')).arrayBuffer());
+ const cfg=audioConfigFromWebmInit(bytes);
+ const frames=demuxClusters(bytes,{timecodeScale:findTimecodeScale(bytes).value,trackNumber:cfg.trackNumber}).frames;
+ const errors=[],v=Object.assign(new EventTarget(),{currentTime:0,paused:false,volume:1,muted:false});
+ const engine=new AudioEngine({win:window,speed:2,onError:e=>errors.push(e.message)});
+ try{
+  engine.attachVideo(v);engine.configure(cfg);
+  for(let i=0;i<100&&!engine.decoder;i++)await wait(10);
+  check(!!engine.decoder,'real Opus decoder configured');
+  const results=[];
+  for(const offset of [0,10,20]){
+   const before=engine.scheduledFrames;
+   v.currentTime=offset;
+   engine.push(frames.map(f=>({...f,pts:f.pts+offset,duration:0.02})));
+   for(let i=0;i<100&&(engine.configPending||!engine.decoder||engine.decoder.decodeQueueSize);i++)await wait(10);
+   await wait(40);
+   const last=engine.pcm.at(-1);
+   check(last&&last.t>=offset,'decoded PCM follows the new packet timeline after gap '+offset+': '+last?.t);
+   v.currentTime=offset+0.1;engine.tick();
+   check(engine.scheduledFrames>before,'nonzero PCM is scheduled after gap '+offset+': '+JSON.stringify({inPos:engine.inPos,nextWhen:engine.nextWhen,now:engine.ctx.currentTime,anchor:engine.anchorPending,last:last.t,pcm:engine.pcm.length}));
+   results.push({offset,last:last.t});
+  }
+  check(errors.length===0,'decoder errors: '+errors.join(','));
+  return results;
+ }finally{engine.destroy()}
+}
 window.__testDone=(async()=>{
  const errors=[],sinks=[];let speed=2;
  const nativeBuffers=Object.getOwnPropertyDescriptor(MediaSource.prototype,'sourceBuffers').get;
@@ -56,7 +87,8 @@ window.__testDone=(async()=>{
   video.pause();second.ms.removeSourceBuffer(second.a);check(second.ms.sourceBuffers.length===1,'native audio removed');check(sinks[1].destroyed,'removed audio releases sink');let rejected=false;try{second.a.appendBuffer(audio)}catch(e){rejected=e.name==='InvalidStateError'}check(rejected,'retired buffer rejects append');video.removeAttribute('src');video.load();await wait(100);
   URL.revokeObjectURL(first.url);URL.revokeObjectURL(second.url);
   check(sinks[1].destroyed,'detach releases current sink');
-  return {advanced,sourceBuffers:2,seek:true,replacement:true,errors};
+  const audioTimeline=await audioTimelineGaps();
+  return {advanced,sourceBuffers:2,seek:true,replacement:true,errors,audioTimeline};
  }finally{hook.uninstall();}
 })().then(result=>window.__testResult={result},error=>window.__testResult={error:error.stack});
 </script>`;
