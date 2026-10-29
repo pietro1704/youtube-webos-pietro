@@ -43,15 +43,9 @@ const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
 
 function isForceEnabled() {
-  return effectivePreference() !== 'auto' && (!player?.isInline || !player.isInline());
+  return _preferredQuality !== 'auto' && (!player?.isInline || !player.isInline());
 }
 
-function effectivePreference() {
-  const hardware = typeof window.AudioDecoder === 'function' && typeof window.MediaSource === 'function';
-  const speed = window.__ytafSpeed ? window.__ytafSpeed.getSpeed() : Number(configRead('defaultPlaybackSpeed'));
-  if (hardware && speed > 1.25 && _preferredQuality === 'auto') return 'hd1080';
-  return _preferredQuality;
-}
 
 async function ensurePlaybackStarts() {
   if (!IS_WEBOS_25 || hasKickstarted || isDestroyed || !player || kickstartInProgress) return;
@@ -120,7 +114,7 @@ async function ensurePlaybackStarts() {
 function getTargetQuality() {
   if (!player || !isForceEnabled()) return null;
   try {
-    return selectPreferredQuality(player.getAvailableQualityLevels?.() || [], effectivePreference());
+    return selectPreferredQuality(player.getAvailableQualityLevels?.() || [], _preferredQuality);
   } catch {
     return null;
   }
@@ -140,7 +134,7 @@ function isQualityAlreadyPreferred() {
 
 function setLocalStorageQuality() {
   if (!isForceEnabled()) return false;
-  const height = qualityStorageHeight(effectivePreference());
+  const height = qualityStorageHeight(_preferredQuality);
   if (!height) return false;
   
   const now = Date.now();

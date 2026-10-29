@@ -148,6 +148,15 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     app.dom.window.close();
   }
 
+  {
+    const app = boot('auto', ['hd2160', 'hd1080'], { state: 1, hardware: true });
+    try {
+      await wait(650);
+      assert.equal(app.calls.length, 0, 'Automatic at 2x must not install a hidden resolution cap');
+      assert.equal(app.win.localStorage.getItem('yt-player-quality'), null,
+        'Automatic at 2x must clear stale forced quality storage');
+    } finally { app.dom.window.close(); }
+  }
   for (const scenario of ['late-levels', 'retry-failure', 'revisit', 'hardware-2x', 'growing-levels']) {
     const app = boot('hd2160', scenario === 'late-levels' ? [] : scenario === 'growing-levels' ? ['hd1080'] : ['hd2160', 'hd1080'],
       { state: 1, failures: scenario === 'retry-failure' ? 1 : 0, hardware: scenario === 'hardware-2x' });
