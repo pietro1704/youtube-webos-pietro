@@ -47,6 +47,8 @@ let playPauseNotificationTimer = null;
 // Lazy load variable
 let optionsPanel = null;
 let optionsPanelVisible = false;
+let panelReturnFocus = null;
+let panelDismissKey = null;
 let panelInitBlock = false;
 let feedRefreshPending = false;
 
@@ -594,8 +596,6 @@ function createOptionsPanel() {
       }
     } else if (evt.keyCode === REMOTE_KEYS.ENTER.code) {
       if (evt instanceof KeyboardEvent) document.activeElement.click();
-    } else if (evt.keyCode === 27) { // Escape
-      showOptionsPanel(false);
     }
     evt.preventDefault(); evt.stopPropagation();
   }, true);
@@ -773,6 +773,7 @@ function showOptionsPanel(visible) {
   if (visible === undefined || visible === null) visible = true;
   
   if (visible && !optionsPanelVisible) {
+    panelReturnFocus = document.activeElement;
     captureQueueSelection(document.activeElement);
     
     // Lazy Initialization
@@ -815,8 +816,8 @@ function showOptionsPanel(visible) {
     console.info('Hiding options panel!');
     optionsPanel.style.display = 'none';
     sponsorBlockUI.togglePopup(false);
-    optionsPanel.blur();
     optionsPanelVisible = false;
+    document.activeElement?.blur();
     lastSafeFocus = null;
     // Stop paying a forced layout per focus change across the whole app again.
     setSpatialNav('trackFocus', false);
@@ -824,8 +825,26 @@ function showOptionsPanel(visible) {
       feedRefreshPending = false;
       refreshPageLogic();
     }
+    const returnFocus = panelReturnFocus;
+    panelReturnFocus = null;
+    if (returnFocus?.isConnected && !returnFocus.disabled) returnFocus.focus();
   }
 }
+
+// The SponsorBlock popup is a sibling of the panel, so dismissal is captured
+// at document scope. Consume held repeats until keyup without navigating YouTube.
+document.addEventListener('keydown', evt => {
+  const code = evt.keyCode;
+  if (code !== 27 && code !== REMOTE_KEYS.BACK.code) return;
+  if (!optionsPanelVisible && (!evt.repeat || panelDismissKey !== code)) return;
+  panelDismissKey = code;
+  evt.preventDefault();
+  evt.stopImmediatePropagation();
+  showOptionsPanel(false);
+}, true);
+document.addEventListener('keyup', evt => {
+  if (evt.keyCode === panelDismissKey) panelDismissKey = null;
+}, true);
 
 // Trap focus inside options panel when visible
 document.addEventListener('focus', (e) => {
