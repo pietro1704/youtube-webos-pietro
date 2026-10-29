@@ -101,6 +101,8 @@ class SponsorBlockHandler {
         this.rafIds = new Set();
 
         this.abortController = null;
+        this._fetchTimeout = null;
+        this._cancelFetch = null;
 
         // High Frequency Polling
         this.pollingRafId = null;
@@ -487,6 +489,7 @@ class SponsorBlockHandler {
         this.log('info', `Executing chain skip: ${chain.chainDescription}`);
 
         video.currentTime = chain.endTime;
+        if (this.isDestroyed) return false;
         this.lastSkipTime = chain.endTime;
         this.hasPerformedChainSkip = true;
         
@@ -553,6 +556,7 @@ class SponsorBlockHandler {
 
             if (video) {
                 this.executeChainSkip(video);
+                if (this.isDestroyed) return;
             }
 
             // UI was already started, so now we just update the data.
@@ -837,7 +841,7 @@ class SponsorBlockHandler {
 
         // If the overlay was orphaned or wiped, clear it so drawOverlay creates a fresh one
         if (this.overlay && !this.overlay.isConnected) {
-            this.overlay.remove();
+            this.overlay.parentNode?.removeChild(this.overlay);
             this.overlay = null;
         }
 
@@ -934,7 +938,7 @@ class SponsorBlockHandler {
         }
         this.lastOverlayHash = overlayHash;
 
-        if (this.overlay) this.overlay.remove();
+        if (this.overlay) this.overlay.parentNode?.removeChild(this.overlay);
 
         const fragment = document.createDocumentFragment();
         const highlightMode = config.sbMode_highlight;
@@ -1277,6 +1281,7 @@ class SponsorBlockHandler {
             this.isSkipping = true;
             this._armSkipWatchdog();
             this.video.currentTime = jumpTarget;
+            if (this.isDestroyed) return;
         }
 
         if (!this.isLegacyWebOSVer) {
@@ -1391,18 +1396,29 @@ class SponsorBlockHandler {
 
                 let res;
                 if (HAS_ABORT_CONTROLLER) {
-                    this.abortController = new AbortController();
-                    const timeoutId = setTimeout(() => this.abortController.abort(), SPONSORBLOCK_CONFIG.timeout);
+                    const controller = new AbortController();
+                    this.abortController = controller;
+                    this._fetchTimeout = setTimeout(() => controller.abort(), SPONSORBLOCK_CONFIG.timeout);
                     try {
-                        res = await fetch(fetchURL, { signal: this.abortController.signal });
+                        res = await fetch(fetchURL, { signal: controller.signal });
                     } finally {
-                        clearTimeout(timeoutId);
+                        clearTimeout(this._fetchTimeout);
+                        this._fetchTimeout = null;
                     }
                 } else {
-                    res = await Promise.race([
-                        fetch(fetchURL),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), SPONSORBLOCK_CONFIG.timeout))
-                    ]);
+                    try {
+                        res = await Promise.race([
+                            fetch(fetchURL),
+                            new Promise((_, reject) => {
+                                this._cancelFetch = () => reject(new Error('cancelled'));
+                                this._fetchTimeout = setTimeout(() => reject(new Error('timeout')), SPONSORBLOCK_CONFIG.timeout);
+                            })
+                        ]);
+                    } finally {
+                        clearTimeout(this._fetchTimeout);
+                        this._fetchTimeout = null;
+                        this._cancelFetch = null;
+                    }
                 }
 
                 return res.ok ? await res.json() : null;
@@ -1427,6 +1443,7 @@ class SponsorBlockHandler {
     }
 
     destroy() {
+        if (this.isDestroyed) return;
         this.isDestroyed = true;
         this.log('info', 'Destroying instance.');
 
@@ -1461,6 +1478,10 @@ class SponsorBlockHandler {
             this.abortController = null;
         }
 
+        clearTimeout(this._fetchTimeout);
+        this._fetchTimeout = null;
+        if (this._cancelFetch) this._cancelFetch();
+        this._cancelFetch = null;
         this.clearManualNotification();
         this._clearSkipWatchdog();
         if (this._barRetryTimer) {
@@ -1474,7 +1495,7 @@ class SponsorBlockHandler {
         sponsorBlockUI.updateSegments([]);
         sponsorBlockLabels.clear();
         if (this.overlay) {
-            this.overlay.remove();
+            this.overlay.parentNode?.removeChild(this.overlay);
             this.overlay = null;
         }
 
@@ -1553,6 +1574,7 @@ if (typeof window !== 'undefined') {
 
     window.__ytaf_sb_init = initSB;
     window.addEventListener('hashchange', initSB);
+    configAddChangeListener('enableSponsorBlock', initSB);
 
     if (document.readyState !== 'loading') {
         setTimeout(initSB, 500);
