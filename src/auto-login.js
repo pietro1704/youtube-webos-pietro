@@ -1,5 +1,5 @@
 import { configRead, configAddChangeListener } from './config.js';
-import { SELECTORS, REMOTE_KEYS, isGuestMode, sendKey, invalidateGuestModeCache } from './utils';
+import { SELECTORS, REMOTE_KEYS, isGuestMode, sendKey, invalidateGuestModeCache, SYNTHETIC_KEY_FLAG } from './utils';
 import './auto-login.css';
 
 const STORAGE_KEY = 'yt.leanback.default::recurring_actions';
@@ -156,73 +156,106 @@ export function initPreviews() {
   }, 2500); 
 }
 
-// CSS rules live in auto-login.css and are scoped by body.ytaf-bypassing-login,
-// so toggling the body class activates/deactivates the page-hide instantly with
-// no <style> element churn.
-function injectBypassCSS() {
-    if (document.body) document.body.classList.add(BYPASS_BODY_CLASS);
+// Bypass actions belong to one selector, identity and launch generation.
+let bypassGeneration = 0;
+let bypassBody = null;
+let startupTimer = null;
+const bypassTimers = new Set();
+
+function cancelActiveBypass() {
+  bypassGeneration++;
+  for (const timer of bypassTimers) clearTimeout(timer);
+  bypassTimers.clear();
+  if (bypassBody) bypassBody.classList.remove(BYPASS_BODY_CLASS);
+  bypassBody = null;
 }
 
-function finalizeBypass() {
-    console.info('[Auto Login] Bypass: Done. Cleaning up...');
-    setTimeout(() => {
-        if (document.body) document.body.classList.remove(BYPASS_BODY_CLASS);
-    }, 2000);
+function identityKey() {
+  try {
+    const raw = localStorage.getItem('yt.leanback.default::last-identity-used');
+    const envelope = raw && JSON.parse(raw);
+    const data = typeof envelope?.data === 'string' ? JSON.parse(envelope.data) : envelope?.data;
+    // Compare identity only; never retain credentials in the pending operation.
+    return JSON.stringify([data?.identityType, data?.effectiveObfuscatedGaiaId,
+      data?.ownerObfuscatedGaiaId, data?.gaiaDelegationType]);
+  } catch { return undefined; }
 }
 
 export function attemptActiveBypass(force = false) {
-    const isSelector = document.body && document.body.classList.contains(SELECTORS.ACCOUNT_SELECTOR);
-
-    // Note: launch-param gating was removed deliberately — we check for the
-    // account selector page on normal loads too, not just parameterised ones.
-    if (!isSelector && !force) return;
-    if (hasBypassed && !force) return;
-	
-    console.info('[Auto Login] Active Bypass: Selector Detected! Executing sequence...');
-    hasBypassed = true;
-    injectBypassCSS();
-
-    setTimeout(() => {
-        if (isGuestMode()) {
-            sendKey(REMOTE_KEYS.DOWN);
-            setTimeout(() => { sendKey(REMOTE_KEYS.ENTER); finalizeBypass(); }, 200);
-        } else {
-            sendKey(REMOTE_KEYS.ENTER);
-            finalizeBypass();
-        }
-    }, 500);
+  const body = document.body;
+  if (!configRead('enableAutoLogin') || !body?.classList.contains(SELECTORS.ACCOUNT_SELECTOR)) return;
+  if (hasBypassed && !force) return;
+  cancelActiveBypass();
+  const identity = identityKey();
+  if (identity === undefined) return;
+  const generation = bypassGeneration, location = window.location.href;
+  hasBypassed = true;
+  bypassBody = body;
+  body.classList.add(BYPASS_BODY_CLASS);
+  const valid = () => generation === bypassGeneration && configRead('enableAutoLogin') &&
+    document.body === body && body.classList.contains(SELECTORS.ACCOUNT_SELECTOR) &&
+    window.location.href === location && identityKey() === identity;
+  const continueIfValid = () => {
+    if (valid()) return true;
+    // A dispatched key can synchronously navigate or start another attempt.
+    if (generation === bypassGeneration) cancelActiveBypass();
+    return false;
+  };
+  const later = (fn, delay) => {
+    const timer = setTimeout(() => {
+      bypassTimers.delete(timer);
+      if (generation !== bypassGeneration) return;
+      if (!valid()) { cancelActiveBypass(); return; }
+      fn();
+    }, delay);
+    bypassTimers.add(timer);
+  };
+  const enter = () => {
+    sendKey(REMOTE_KEYS.ENTER);
+    if (continueIfValid()) later(cancelActiveBypass, 2000);
+  };
+  later(() => {
+    invalidateGuestModeCache();
+    if (isGuestMode()) {
+      sendKey(REMOTE_KEYS.DOWN);
+      if (continueIfValid()) later(enter, 200);
+    } else enter();
+  }, 500);
 }
 
 export function resetActiveBypass() {
-    hasBypassed = false;
-    // Identity may have changed between launches (sign-in/out); drop the cached guest flag.
-    invalidateGuestModeCache();
+  cancelActiveBypass();
+  if (startupTimer !== null) clearTimeout(startupTimer);
+  startupTimer = null;
+  hasBypassed = false;
+  invalidateGuestModeCache();
 }
 
 function setupActiveBypassListener() {
-    if (pageObserverAttached) return;
-    window.addEventListener('ytaf-page-update', (evt) => {
-        if (evt.detail && evt.detail.isAccountSelector) {
-            attemptActiveBypass();
-        } 
-    });
-    pageObserverAttached = true;
+  if (pageObserverAttached) return;
+  window.addEventListener('ytaf-page-update', evt => {
+    if (evt.detail?.isAccountSelector) attemptActiveBypass();
+    else cancelActiveBypass();
+  });
+  window.addEventListener('keydown', evt => {
+    if (!evt[SYNTHETIC_KEY_FLAG]) cancelActiveBypass();
+  }, true);
+  window.addEventListener('mousedown', cancelActiveBypass, true);
+  window.addEventListener('hashchange', cancelActiveBypass);
+  window.addEventListener('pagehide', cancelActiveBypass);
+  pageObserverAttached = true;
 }
 
 export function initAutoLogin() {
-  if (configRead('enableAutoLogin')) {
-    console.info('[Auto Login] Initializing...');
-    disableWhosWatching();
-    disablePromoUpsell();
-    setupActiveBypassListener();
-    
-    setTimeout(() => {
-        if (!hasBypassed) {
-            console.info('[Auto Login] Startup window closed');
-            hasBypassed = true;
-        }
-    }, 15000);
-  }
+  if (!configRead('enableAutoLogin')) return;
+  disableWhosWatching();
+  disablePromoUpsell();
+  setupActiveBypassListener();
+  if (startupTimer !== null) clearTimeout(startupTimer);
+  startupTimer = setTimeout(() => {
+    startupTimer = null;
+    hasBypassed = true;
+  }, 15000);
 }
 
 document.readyState === 'loading'
@@ -230,6 +263,7 @@ document.readyState === 'loading'
   : (initAutoLogin(), initPreviews());
 
 configAddChangeListener('enableAutoLogin', ({ detail }) => {
+  resetActiveBypass();
   if (detail.newValue) {
     console.info('Auto login setting enabled');
     initAutoLogin();
