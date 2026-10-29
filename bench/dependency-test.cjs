@@ -72,7 +72,7 @@ if (require.main === module) setTimeout(() => {
   // --- Both off: hook should come off entirely ---
   {
     const { win } = boot({ enableAdBlock: false, enableLegacyEmojiFix: false,
-                           hideGuestSignInPrompts: false, hideEndcards: false });
+                           hideGuestSignInPrompts: false, hideEndcards: false, hideAnnotations: false });
     t('JSON.parse unhooked when nothing needs it',
       win.JSON.parse.toString().indexOf('native code') !== -1);
   }
