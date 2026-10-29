@@ -1,3 +1,5 @@
+// @ts-check
+
 export const playbackSpeedModes = {
   0.25: '0.25x',
   0.5: '0.5x',
@@ -17,11 +19,14 @@ export const videoQualityModes = {
   hd2160: '2160p / 4K',
 };
 
+/** @type {Record<string, string>} */
 export const audioSyncModes = {};
 for (let milliseconds = -500; milliseconds <= 500; milliseconds += 25) {
-  audioSyncModes[String(milliseconds)] = `${milliseconds > 0 ? '+' : ''}${milliseconds} ms`;
+  audioSyncModes[String(milliseconds)] =
+    `${milliseconds > 0 ? '+' : ''}${milliseconds} ms`;
 }
 
+/** @type {Record<string, number>} */
 const QUALITY_HEIGHTS = {
   tiny: 144,
   small: 240,
@@ -36,11 +41,24 @@ const QUALITY_HEIGHTS = {
   highres: 4320,
 };
 
+/**
+ * @template {PropertyKey | undefined} T
+ * @param {object} map
+ * @param {T} value
+ * @param {T} fallback
+ * @returns {T}
+ */
 function allowed(map, value, fallback) {
   // Object.hasOwn is Chrome 93; legacy webOS starts at Chromium 38.
-  return Object.prototype.hasOwnProperty.call(map, value) ? value : fallback;
+  return Object.prototype.hasOwnProperty.call(
+    map,
+    /** @type {PropertyKey} */ (value),
+  )
+    ? value
+    : fallback;
 }
 
+/** @param {{defaultPlaybackSpeed?: unknown, preferredVideoQuality?: string} | null | undefined} raw */
 export function normalizePlaybackPreferences(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   return {
@@ -57,6 +75,11 @@ export function normalizePlaybackPreferences(raw) {
   };
 }
 
+/**
+ * @param {string[] | null | undefined} availableLevels
+ * @param {string} preference
+ * @returns {string | null}
+ */
 export function selectPreferredQuality(availableLevels, preference) {
   if (preference === 'auto' || !Array.isArray(availableLevels)) return null;
   const limit = QUALITY_HEIGHTS[preference];
@@ -75,6 +98,7 @@ export function selectPreferredQuality(availableLevels, preference) {
   return selected;
 }
 
+/** @param {string} preference */
 export function qualityStorageHeight(preference) {
   return QUALITY_HEIGHTS[preference] || 0;
 }

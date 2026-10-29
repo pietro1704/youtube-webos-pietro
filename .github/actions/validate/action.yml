@@ -12,7 +12,7 @@ runs:
     - name: Lint and type-check
       if: inputs.variant == 'legacy'
       shell: bash
-      run: npm run lint && npm run type-check
+      run: npm run lint && npm run type-check && npm run prettier-check
     - name: Build and test legacy bundle
       if: inputs.variant == 'legacy'
       shell: bash
@@ -32,4 +32,3 @@ runs:
       run: npm run package
     - shell: bash
       run: npm run manifest
-
