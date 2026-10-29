@@ -54,7 +54,7 @@ export function showNotification(text, time = 3000) {
     if (liveMessages.get(elmInner.textContent)?.elmInner === elmInner) {
       liveMessages.delete(elmInner.textContent);
     }
-    setTimeout(() => elm.remove(), 1000);
+    setTimeout(() => elm.parentNode?.removeChild(elm), 1000);
   };
 
   if (time > 0) elmInner._removeTimer = setTimeout(remove, time);
