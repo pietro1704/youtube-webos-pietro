@@ -253,27 +253,11 @@ export function createSpeedController({
     releaseAudioSink();
     const player = getPlayer();
     if (!player) return;
-    if (
-      currentSpeed > 1.25 &&
-      typeof player.setPlaybackQualityRange === 'function'
-    ) {
-      const preferred = configRead('preferredVideoQuality');
-      const capped = preferred && preferred !== 'auto' ? preferred : 'hd1080';
+    if (typeof player.setPlaybackQualityRange === 'function') {
+      const preferred = configRead('preferredVideoQuality') || 'auto';
       const quality = typeof player.getAvailableQualityLevels === 'function'
-        ? selectPreferredQuality(player.getAvailableQualityLevels(), capped) || 'auto'
-        : capped;
-      player.setPlaybackQualityRange(quality, quality);
-    } else if (
-      fromSpeed > 1.25 &&
-      typeof player.setPlaybackQualityRange === 'function'
-    ) {
-      const preferred = configRead('preferredVideoQuality');
-      const quality =
-        preferred && preferred !== 'auto'
-          ? preferred
-          : configRead('forceHighResVideo')
-            ? 'highres'
-            : 'auto';
+        ? selectPreferredQuality(player.getAvailableQualityLevels(), preferred) || 'auto'
+        : preferred;
       player.setPlaybackQualityRange(quality, quality);
     }
     const videoData = player.getVideoData && player.getVideoData();
