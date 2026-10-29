@@ -1,7 +1,7 @@
 import { configRead, configAddChangeListener, configRemoveChangeListener } from './config.js';
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
-import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage } from './utils.js';
+import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, SYNTHETIC_KEY_FLAG } from './utils.js';
 import { qualityStorageHeight, selectPreferredQuality } from './playback-preferences.js';
 
 const DEBUG = false;
@@ -24,7 +24,7 @@ let lastKnownState = null;
 let lastPolledVideoId = null;
 let _isWatchPageCached = false;
 let videoBeingProcessed = null;
-let kickstartInProgress = false;
+let activeKickstart = null;
 let qualityAttemptKey = null;
 let qualityAttempts = 0;
 let lastTargetQuality = null;
@@ -47,68 +47,84 @@ function isForceEnabled() {
 }
 
 
+function cancelKickstart() {
+  const op = activeKickstart;
+  activeKickstart = null;
+  if (!op) return;
+  for (const [timer, resolve] of op.timers) {
+    clearTimeout(timer);
+    if (resolve) resolve();
+  }
+  for (const id of op.frames) cancelAnimationFrame(id);
+  for (const style of op.styles) style.parentNode?.removeChild(style);
+  op.timers.clear();
+  op.frames.clear();
+  op.styles.clear();
+}
+
+function validKickstart(op) {
+  if (activeKickstart !== op || isDestroyed || !isForceEnabled() ||
+      _preferredQuality !== op.quality || player !== op.player ||
+      !op.player.isConnected || document.getElementById(SELECTORS.PLAYER_ID) !== op.player ||
+      !isWatchPage() || window.location.href !== op.location) return false;
+  try {
+    const state = op.player.getPlayerState?.();
+    return op.player.getVideoData?.()?.video_id === op.videoId &&
+      (state === STATE_UNSTARTED || state === STATE_BUFFERING || state === STATE_PLAYING || state === 5);
+  } catch { return false; }
+}
+
 async function ensurePlaybackStarts() {
-  if (!IS_WEBOS_25 || hasKickstarted || isDestroyed || !player || kickstartInProgress) return;
-
-  kickstartInProgress = true;
-  if (DEBUG) console.info('[VideoQuality] 🚀 Starting playback enforcer...');
-
-  const MAX_ATTEMPTS = 10;
-  const INTERVAL_MS = 500;
-
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    if (isDestroyed || !player || hasKickstarted) {
-      kickstartInProgress = false;
-      return;
-    }
-
+  if (!IS_WEBOS_25 || hasKickstarted || isDestroyed || !player || activeKickstart || !isForceEnabled()) return;
+  const op = { player, videoId: player.getVideoData?.()?.video_id,
+    location: window.location.href, quality: _preferredQuality,
+    timers: new Map(), frames: new Set(), styles: new Set() };
+  activeKickstart = op;
+  const finish = () => { if (activeKickstart === op) cancelKickstart(); };
+  const later = (fn, ms) => {
+    const timer = setTimeout(() => {
+      op.timers.delete(timer);
+      if (!validKickstart(op)) { finish(); return; }
+      fn();
+    }, ms);
+    op.timers.set(timer, null);
+  };
+  for (let i = 0; i < 10; i++) {
+    if (!validKickstart(op)) { finish(); return; }
     try {
-      const currentState = player.getPlayerState?.();
-
-      if (currentState === STATE_PLAYING) {
+      if (op.player.getPlayerState?.() === STATE_PLAYING) {
         hasKickstarted = true;
-        kickstartInProgress = false;
-        if (DEBUG) console.info('[VideoQuality] ✅ Playback verified! Kickstart complete.');
-        
-        requestAnimationFrame(() => {
-            const controls = document.querySelector('yt-focus-container[idomkey="controls"]');
-            const isControlsVisible = controls && controls.classList.contains('MFDzfe--focused');
-
-            if (isControlsVisible) {
-                if (DEBUG) console.info('[VideoQuality] 🎮 Controls are focused. Hiding and dismissing...');
-
-                const hideStyle = document.createElement('style');
-                hideStyle.textContent = '.GLc3cc { opacity: 0 !important; transition: opacity 0.1s; }';
-                document.head.appendChild(hideStyle);
-
-                sendKey(REMOTE_KEYS.UP);                            
-                setTimeout(() => sendKey(REMOTE_KEYS.UP), 250);     
-                setTimeout(() => sendKey(REMOTE_KEYS.UP), 500);     
-
-                setTimeout(() => {
-                    if (hideStyle.isConnected) hideStyle.remove();
-                }, 750);
-            }
+        const frame = requestAnimationFrame(() => {
+          op.frames.delete(frame);
+          if (!validKickstart(op)) { finish(); return; }
+          const controls = document.querySelector('yt-focus-container[idomkey="controls"]');
+          if (!controls?.classList.contains('MFDzfe--focused')) { finish(); return; }
+          const style = document.createElement('style');
+          style.textContent = '.GLc3cc { opacity: 0 !important; transition: opacity 0.1s; }';
+          document.head.appendChild(style);
+          op.styles.add(style);
+          sendKey(REMOTE_KEYS.UP);
+          if (!validKickstart(op)) { finish(); return; }
+          later(() => sendKey(REMOTE_KEYS.UP), 250);
+          later(() => sendKey(REMOTE_KEYS.UP), 500);
+          later(finish, 750);
         });
-        
+        op.frames.add(frame);
         return;
       }
-
-      if (DEBUG) console.log(`[VideoQuality] 👊 Kick attempt ${i + 1}/${MAX_ATTEMPTS} (State: ${currentState})`);
-      player.playVideo?.();
-
-    } catch (e) {
-      if (DEBUG) console.warn('[VideoQuality] Kick attempt failed:', e);
+      op.player.playVideo?.();
+    } catch (error) {
+      DEBUG && console.warn('[VideoQuality] Kick attempt failed:', error);
     }
-	
-	// eslint-disable-next-line no-await-in-loop
-    await new Promise(resolve => setTimeout(resolve, INTERVAL_MS));
+    if (!validKickstart(op)) { finish(); return; }
+    // Cancellation resolves the wait as well as removing its timer.
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise(resolve => {
+      const timer = setTimeout(() => { op.timers.delete(timer); resolve(); }, 500);
+      op.timers.set(timer, resolve);
+    });
   }
-
-  kickstartInProgress = false;
-  if (DEBUG && !hasKickstarted) {
-    console.warn('[VideoQuality] ⚠️ Playback enforcer timed out without confirming PLAYING state.');
-  }
+  finish();
 }
 
 function getTargetQuality() {
@@ -280,6 +296,7 @@ function handleStateChange(state) {
   if (isDestroyed || !player) return;
 
   const actualState = (state && state.data !== undefined) ? state.data : state;
+  if (actualState === 2 || (activeKickstart && !validKickstart(activeKickstart))) cancelKickstart();
 
   // Publish FIRST. This event is shared infrastructure: watch.js (clock
   // visibility) and sponsorblock.js (overlay cache invalidation, observer
@@ -384,6 +401,7 @@ export function destroyVideoQuality() {
   DEBUG && console.info('[VideoQuality] Destroying');
   
   isDestroyed = true;
+  cancelKickstart();
   
   if (initTimer) {
     clearTimeout(initTimer);
@@ -414,7 +432,6 @@ export function destroyVideoQuality() {
   qualityAttemptKey = null;
   videoBeingProcessed = null;
   _isWatchPageCached = false;
-  kickstartInProgress = false;
   // Don't reset hasKickstarted here so it persists for the session
 }
 
@@ -458,6 +475,7 @@ export function initVideoQuality() {
       if (configAddChangeListener && !configCleanup) {
         const onChange = (evt) => {
           if (isDestroyed) return;
+          cancelKickstart();
           _preferredQuality = evt.detail.newValue;
           
           if (isForceEnabled()) {
@@ -555,6 +573,11 @@ function setupListeners() {
         handleNavigation();
     }
     
+    window.addEventListener('hashchange', cancelKickstart);
+    window.addEventListener('pagehide', cancelKickstart);
+    const cancelForInput = evt => { if (!evt[SYNTHETIC_KEY_FLAG]) cancelKickstart(); };
+    window.addEventListener('keydown', cancelForInput, true);
+    window.addEventListener('mousedown', cancelForInput, true);
     window.addEventListener('beforeunload', destroyVideoQuality);
 }
 

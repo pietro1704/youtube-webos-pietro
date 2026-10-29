@@ -63,10 +63,17 @@ function boot(preference, available, options = {}) {
     }),
   );
 
-  const calls = [];
+  const calls = [], keys = [];
+  win.addEventListener('keydown', evt => { if (evt.keyCode === 38) keys.push(evt.keyCode); });
+  if (options.controls) {
+    const controls = win.document.createElement('yt-focus-container');
+    controls.setAttribute('idomkey', 'controls');
+    controls.className = 'MFDzfe--focused';
+    win.document.body.appendChild(controls);
+  }
   let current = 'medium';
   let videoId = 'abcdefghijk';
-  const state = options.state ?? -1;
+  let state = options.state ?? -1;
   let failures = options.failures || 0;
   let resumes = 0;
   const player = win.document.getElementById(
@@ -91,12 +98,17 @@ function boot(preference, available, options = {}) {
   player.playVideo = () => { resumes++; };
   player.pauseVideo = () => {};
   applyBundleEnvironment(win);
+  if (options.webos25) {
+    setUserAgent(win, UA.webos23.replace('2023', '2025'));
+    // The legacy bundle also runs on modern TVs, which have native Reflect.
+    win.Reflect = Reflect;
+  }
   if (options.hardware) {
     win.AudioDecoder = class {};
     win.MediaSource = class {};
   }
   win.eval(fs.readFileSync(bundlePath, 'utf8'));
-  return { dom, win, calls, resumes: () => resumes, setAvailable(levels) { available = levels; }, newVideo(id) { videoId = id; current = 'medium'; } };
+  return { dom, win, calls, keys, resumes: () => resumes, setState(value) { state = value; }, setAvailable(levels) { available = levels; }, newVideo(id) { videoId = id; current = 'medium'; } };
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -205,6 +217,52 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       await wait(650);
       assert.equal(app.calls.length, 0, action + ' cancels pending quality application');
       assert.equal(app.resumes(), 0);
+    } finally { app.dom.window.close(); }
+  }
+  for (const action of ['pause', 'automatic', 'leave-watch', 'replace-player', 'destroy']) {
+    const app = boot('hd2160', ['hd2160'], { state: -1, webos25: true });
+    try {
+      await wait(100);
+      assert.equal(app.resumes(), 1, 'webOS25 branch is exercised');
+      if (action === 'pause') app.setState(2);
+      if (action === 'automatic') {
+        app.win.ytaf_showOptionsPanel(true);
+        Array.from(app.win.document.querySelectorAll('.shortcut-control-row'))
+          .find(row => row.textContent.includes('Default Quality')).click();
+      }
+      if (action === 'leave-watch') {
+        app.win.document.body.className = '';
+        app.win.dispatchEvent(new app.win.CustomEvent('ytaf-page-update', { detail: { isWatch: false } }));
+      }
+      if (action === 'replace-player') {
+        const old = app.win.document.getElementById('ytlr-player__player-container-player');
+        old.parentNode.replaceChild(old.cloneNode(), old);
+      }
+      if (action === 'destroy') app.win.dispatchEvent(new app.win.Event('beforeunload'));
+      await wait(700);
+      assert.equal(app.resumes(), 1, action + ' cancels the real webOS25 startup loop');
+    } finally { app.dom.window.close(); }
+  }
+  for (const action of ['success', 'pause', 'automatic', 'navigate', 'user-key']) {
+    const app = boot('hd2160', ['hd2160'], { state: 1, webos25: true, controls: true });
+    try {
+      await wait(100); assert.deepEqual(app.keys, [38]);
+      if (action === 'pause') app.setState(2);
+      if (action === 'automatic') {
+        app.win.ytaf_showOptionsPanel(true);
+        Array.from(app.win.document.querySelectorAll('.shortcut-control-row'))
+          .find(row => row.textContent.includes('Default Quality')).click();
+      }
+      if (action === 'navigate') {
+        app.win.history.replaceState(null, '', '#/home');
+        app.win.dispatchEvent(new app.win.Event('hashchange'));
+      }
+      if (action === 'user-key') app.win.dispatchEvent(new app.win.KeyboardEvent('keydown', { keyCode: 40 }));
+      await wait(800);
+      assert.deepEqual(app.keys, action === 'success' ? [38, 38, 38] : [38],
+        action + ' preserves control-key ownership in the real bundle');
+      assert.equal(Array.from(app.win.document.querySelectorAll('style')).some(style =>
+        style.textContent.startsWith('.GLc3cc { opacity')), false);
     } finally { app.dom.window.close(); }
   }
   console.log('video quality: all scenarios passed');
