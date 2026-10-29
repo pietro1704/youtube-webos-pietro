@@ -811,12 +811,14 @@ function showOptionsPanel(visible) {
         lastSafeFocus = optionsPanel;
     }
     optionsPanelVisible = true;
+    window.dispatchEvent(new CustomEvent('ytaf-settings-visibility', { detail: { visible: true } }));
   } else if (!visible && optionsPanelVisible && optionsPanel) {
     panelInitBlock = false;
     console.info('Hiding options panel!');
     optionsPanel.style.display = 'none';
     sponsorBlockUI.togglePopup(false);
     optionsPanelVisible = false;
+    window.dispatchEvent(new CustomEvent('ytaf-settings-visibility', { detail: { visible: false } }));
     document.activeElement?.blur();
     lastSafeFocus = null;
     // Stop paying a forced layout per focus change across the whole app again.

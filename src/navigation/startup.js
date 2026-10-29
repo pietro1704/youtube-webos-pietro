@@ -10,7 +10,8 @@ export function createSubscriptionStartup({ enabled, getAccount, isLanding, hasE
     pending = true;
     try {
       const dispatch = await getDispatcher();
-      if (token !== generation || !enabled() || getAccount() !== account || !isLanding() || hasExternalLaunch()) return false;
+      if (token !== generation) return false;
+      if (!enabled() || getAccount() !== account || !isLanding() || hasExternalLaunch()) { cancel(); return false; }
       if (typeof dispatch !== 'function') throw new Error('Native navigation unavailable');
       await dispatch({ browseEndpoint: { browseId: 'FEsubscriptions' } });
       if (token !== generation) return false;

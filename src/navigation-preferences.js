@@ -3,6 +3,7 @@ import { ResolveCommandRegistry } from './app_api/index.ts';
 import { readAccountContext } from './account-context.js';
 import { guideCatalog, guideSections, customizeGuide } from './navigation/guide.js';
 import { createSubscriptionStartup, isHomeLocation, hasExternalTarget } from './navigation/startup.js';
+import { SYNTHETIC_KEY_FLAG } from './utils.js';
 
 let initialized = false;
 let catalog = [], catalogAccount = null;
@@ -13,12 +14,20 @@ const list = key => { const value = configRead(key); return Array.isArray(value)
 export function initNavigationPreferences() {
   if (initialized) return;
   initialized = true;
+  const initialAccount = readAccountContext();
+  let startupAccount = initialAccount.authenticated ? initialAccount.key : null;
+  const currentAccount = () => {
+    const state = readAccountContext();
+    if (startupAccount && state.authenticated && state.key !== startupAccount) { startup.cancel(); return null; }
+    if (!startupAccount && state.authenticated) startupAccount = state.key;
+    return state.authenticated ? state.key : null;
+  };
   const startup = createSubscriptionStartup({ enabled: () => configRead('startInSubscriptions'),
-    getAccount: () => { const state = readAccountContext(); return state.authenticated ? state.key : null; },
+    getAccount: currentAccount,
     hasExternalLaunch: () => hasExternalTarget(window.launchParams),
     isLanding: () => {
       const panel = document.querySelector('.ytaf-ui-container');
-      return isHomeLocation(window.location) && !/\bWEB_PAGE_TYPE_(?:WATCH|SHORTS|SEARCH|ACCOUNT_SELECTOR)\b/.test(document.body ? document.body.className : '') && !(panel && panel.style.display === 'block');
+      return isHomeLocation(window.location) && !/\bWEB_PAGE_TYPE_(?:WATCH|SHORTS|SEARCH|ACCOUNT_SELECTOR)\b/.test(document.body ? document.body.className : '') && !(panel && !panel.hidden && window.getComputedStyle(panel).display !== 'none');
     },
     getDispatcher: async () => { const registry = await ResolveCommandRegistry.getInstance(); return command => registry.dispatchCommand(command); },
     report(text) { startupMessage = text; changed(); } });
@@ -46,9 +55,14 @@ export function initNavigationPreferences() {
   configAddChangeListener('startInSubscriptions', () => { startup.cancel(); configureHook(); changed(); });
   for (const key of ['hiddenSidebarItems', 'sidebarOrder', 'hideSidebarChannels']) configAddChangeListener(key, changed);
   const navigation = () => {
+    currentAccount();
     if (catalogAccount !== readAccountContext().key) { catalog = []; catalogAccount = null; changed(); }
   };
   window.addEventListener('ytaf-page-update', navigation);
+  window.addEventListener('hashchange', () => startup.cancel());
+  window.addEventListener('ytaf-settings-visibility', evt => { if (evt.detail?.visible) startup.cancel(); });
+  const userInteraction = evt => { if (!evt[SYNTHETIC_KEY_FLAG]) startup.cancel(); };
+  for (const type of ['keydown', 'mousedown', 'touchstart']) window.addEventListener(type, userInteraction, true);
   document.addEventListener('webOSRelaunch', () => startup.cancel(), true);
   window.addEventListener('pagehide', () => startup.cancel());
   if (configRead('startInSubscriptions')) {
