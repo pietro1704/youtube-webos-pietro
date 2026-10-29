@@ -1,4 +1,5 @@
 import { WsolaStretcher } from './wsola.js';
+import { createAudioOutput } from './audio-output.js';
 
 const DRIFT_WINDOW = 30;
 
@@ -31,7 +32,6 @@ export class AudioEngine {
 
     this.ctx = new win.AudioContext();
     this.gain = this.ctx.createGain();
-    this.gain.connect(this.ctx.destination);
 
     this.chunks = [];
     this.pcm = [];
@@ -99,6 +99,8 @@ export class AudioEngine {
       this.anchorPending = true;
       this.stalledTicks = 0;
     };
+    this.output = createAudioOutput({ win, context: this.ctx, source: this.gain,
+      onError: error => this.reportError(error) });
   }
 
   attachVideo(el) {
@@ -336,6 +338,7 @@ export class AudioEngine {
       this.video.removeEventListener('playing', this.onPlaying);
     }
     this.stopFuture();
+    this.output.destroy();
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     if (this.ctx.state !== 'closed') this.ctx.close();
   }
