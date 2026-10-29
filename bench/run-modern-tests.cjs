@@ -18,6 +18,7 @@ const suites = [
   'speed-test.cjs',
   'settings-speed-test.cjs',
   'settings-entry-test.cjs',
+  'settings-back-test.cjs',
   'settings-scroll-test.cjs',
   'video-quality-test.cjs',
   'content-preferences-test.cjs',

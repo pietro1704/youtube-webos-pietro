@@ -137,10 +137,13 @@ const server = http.createServer((req, res) => {
     }
     await key(38, 'ArrowUp');
     assert.ok(await evaluate('document.getElementById("ytaf-page-main").contains(document.activeElement)'), 'Up returns to preceding setting');
-    await key(27, 'Escape');
-    assert.equal(await evaluate('getComputedStyle(document.querySelector(".ytaf-ui-container")).display'), 'none');
-    await evaluate('window.ytaf_showOptionsPanel(true)');
-    await wait(100);
+    for (const [code, name] of [[461, 'Back'], [27, 'Escape']]) {
+      await key(code, name);
+      assert.equal(await evaluate('getComputedStyle(document.querySelector(".ytaf-ui-container")).display'), 'none');
+      assert.equal(await evaluate('document.activeElement.id'), 'native', 'dismissal restores native focus');
+      await evaluate('window.ytaf_showOptionsPanel(true)');
+      await wait(100);
+    }
     // Mouse wheel must work as well as remote focus navigation.
     const point = await evaluate(`(() => {const p=document.getElementById('ytaf-page-main');p.scrollTop=0;
       const r=p.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
