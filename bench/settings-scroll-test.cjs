@@ -80,6 +80,25 @@ const server = http.createServer((req, res) => {
     await wait(300);
     await evaluate('document.getElementById("native").focus(); window.ytaf_showOptionsPanel(true)');
     await wait(100);
+    const content = await evaluate(`(() => {
+      const page = document.getElementById('ytaf-page-main');
+      const label = page.querySelector('.label-content');
+      const ids = ['ytaf-watched-status','ytaf-caption-controls','ytaf-video-queue','ytaf-sidebar-controls','ytaf-build-info'];
+      const font = el => parseFloat(getComputedStyle(el).fontSize);
+      const details = ids.map(id => ({id, font:font(document.getElementById(id))}));
+      const button = document.getElementById('ytaf-caption-save');
+      const status = document.querySelector('#ytaf-video-queue [aria-live]');
+      const original = status.textContent;
+      status.textContent = 'LongUnbrokenVideoTitle'.repeat(30);
+      const wrapped = page.scrollWidth <= page.clientWidth + 1;
+      status.textContent = original;
+      return {label:font(label), details, buttonFont:font(button), buttonHeight:button.getBoundingClientRect().height, wrapped};
+    })()`);
+    assert.ok(content.details.every(item => item.font <= content.label + 1),
+      'status/build text must use option-size typography: ' + JSON.stringify(content));
+    assert.ok(content.buttonFont >= content.label * 0.9 && content.buttonHeight >= height * 0.03,
+      'feature action buttons must be readable from the TV');
+    assert.ok(content.wrapped, 'long dynamic content must wrap inside the scroll page');
     const geometry = await evaluate(`(() => {
       const panel = document.querySelector('.ytaf-ui-container');
       const page = document.getElementById('ytaf-page-main');
