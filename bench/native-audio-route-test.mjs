@@ -59,7 +59,7 @@ test('carrier asset is actual stereo 48kHz AAC with a short bounded media timeli
 for (const action of ['reject', 'media-error', 'append-error', 'timeout']) {
   test(`native route ${action} reports failure once and releases all owned resources`, async () => {
     const h = harness();
-    if (action === 'reject') h.reject();
+    if (action === 'reject') { h.mediaSource.dispatchEvent(new Event('sourceopen')); h.sb.dispatchEvent(new Event('updateend')); h.reject(); }
     if (action === 'media-error') h.element.dispatchEvent(new Event('error'));
     if (action === 'append-error') { h.mediaSource.dispatchEvent(new Event('sourceopen')); h.sb.dispatchEvent(new Event('error')); }
     if (action === 'timeout') h.timers.get(1)();
@@ -80,7 +80,7 @@ for (const action of ['reject', 'media-error', 'append-error', 'timeout']) {
 test('cancelled startup cannot append or report an old failure against the replacement route', async () => {
   const old = harness(), next = harness();
   old.route.destroy();
-  old.mediaSource.dispatchEvent(new Event('sourceopen')); old.sb.dispatchEvent(new Event('updateend')); old.reject();
+  old.mediaSource.dispatchEvent(new Event('sourceopen')); old.sb.dispatchEvent(new Event('updateend'));
   next.ready(); await settle();
   assert.equal(old.appended.length, 0);
   assert.equal(old.endCalls(), 0);
@@ -88,4 +88,20 @@ test('cancelled startup cannot append or report an old failure against the repla
   assert.equal(next.element.connected, true);
   assert.equal(next.element.paused, false);
   next.route.destroy();
+});
+
+test('webOS native decoder starts only after the complete AAC source is buffered', async () => {
+  const h = harness();
+  assert.equal(h.element.autoplay, undefined, 'autoplay must not race source initialization');
+  assert.equal(h.element.preload, 'auto');
+  assert.equal(h.element.paused, true, 'play must wait for append completion');
+  h.mediaSource.dispatchEvent(new Event('sourceopen'));
+  assert.equal(h.element.paused, true, 'sourceopen alone is not enough');
+  h.sb.dispatchEvent(new Event('updateend'));
+  assert.equal(h.endCalls(), 1);
+  assert.equal(h.element.paused, false);
+  h.route.destroy();
+  h.reject();
+  await settle();
+  assert.deepEqual(h.errors, [], 'late play rejection cannot affect a replacement');
 });
