@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const { test, before } = require('node:test');
 const fs = require('node:fs');
 const vm = require('node:vm');
+let createSegmentMuter;
+before(async () => { ({ createSegmentMuter } = await import('../src/sponsorblock-mute.js')); });
 const { JSDOM } = require('jsdom');
 
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
@@ -20,6 +22,7 @@ function harness({ abort = true } = {}) {
   const ui = { segments: [], labels: [], popup: false };
   let now = 0, serial = 0;
   const context = {
+    createSegmentMuter,
     window: win, document: win.document, URLSearchParams: win.URLSearchParams,
     HTMLVideoElement: win.HTMLVideoElement, MutationObserver: win.MutationObserver,
     AbortController: abort ? AbortController : undefined,

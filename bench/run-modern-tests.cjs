@@ -7,6 +7,7 @@ const suites = [
   'auto-login-ui-test.cjs',
   'sponsorblock-ui-test.cjs',
   'sponsorblock-overlap-ui-test.cjs',
+  'sponsorblock-mute-ui-test.cjs',
   'build-info-test.cjs',
   'queue-ui-test.cjs',
   'captions-ui-test.cjs',
