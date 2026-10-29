@@ -69,9 +69,23 @@ Review changes made since 0.3.8 [here](https://github.com/NicholasBly/youtube-we
 
 ## Installation
 
-- Use [webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel) - app is available via repo link: https://raw.githubusercontent.com/NicholasBly/youtube-webos/main/repo.json
-- Use [Device Manager app](https://github.com/webosbrew/dev-manager-desktop) - see [Releases](https://github.com/NicholasBly/youtube-webos/releases) for a
-  prebuilt `.ipk` binary file. A webOS22+ .ipk is available for users on 2022+ TVs, supporting webOS22-25. These are lighter, more optimized builds for newer hardware, without translation layers needed for older TVs.
+Este fork ainda não tem releases publicadas. Baixe o artefato do alvo desejado
+em [Build & Test](https://github.com/pietro1704/youtube-webos-pietro/actions/workflows/main.yml)
+de uma execução aprovada em `main` (requer login no GitHub). Cada ZIP inclui
+IPK, manifesto SHA-256 e `build-info.json` com commit e variante.
+
+- `legacy`: webOS 3 ou superior, incluindo TVs antigas.
+- `modern`: webOS 22 ou superior.
+
+Os alvos usam o mesmo ID de aplicativo e se substituem na TV. Instale o IPK
+extraído com o [Device Manager](https://github.com/webosbrew/dev-manager-desktop).
+O `repo.json` deste fork permanece vazio até uma release verificada ser publicada.
+O pipeline gera um catálogo `repo.json` por release, usando IDs e hashes lidos
+dos pacotes. Para conferir sem publicar, reúna os artefatos em `packages/legacy`
+e `packages/modern` e execute `node tools/prepare-release.cjs packages out v0.8.4`.
+O modo `--require-clean` também exige origem limpa no commit do checkout.
+Pacotes do upstream não incluem as alterações deste fork.
+
 - Use [webOS TV CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation) -
   `ares-install youtube...ipk` (For more information on configuring the webOS CLI tools, see [below](#development-tv-setup))
 
@@ -108,18 +122,20 @@ luna-send-pub -n 1 'luna://com.webos.service.eim/deleteDevice' '{"appId":"youtub
 - Clone the repository
 
 ```sh
-git clone https://github.com/NicholasBly/youtube-webos.git
+git clone https://github.com/pietro1704/youtube-webos-pietro.git
 ```
 
 - Enter the folder and build the App, this will generate a `*.ipk` file.
 
 ```sh
-cd youtube-webos
+cd youtube-webos-pietro
 
 # Install dependencies (need to do this only when updating local repository / package.json is changed)
-npm install
+npm ci
 
-npm run build && npm run package
+npm test && npm run package && npm run manifest
+# Ou, para webOS 22+:
+npm run build:modern && npm run test:modern && npm run package && npm run manifest
 ```
 
 ## Development TV setup

@@ -1,42 +1,58 @@
 name: Build & Release
-
 on:
   push:
-    branches:
-      - '!*'
-    tags:
-      - 'v*.*'
-
+    tags: ['v*.*']
+permissions:
+  contents: read
 jobs:
-  build-and-release:
+  build:
+    name: Build & Test (${{ matrix.variant }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [legacy, modern]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: npm
-
-      - run: npm ci
-      - run: npm test
-      - run: npm run package
-      - run: npm run manifest
-
-      - name: Create release
-        uses: ncipollo/release-action@v1
+      - uses: ./.github/actions/validate
         with:
-          name: 'Release ${{ github.ref }}'
+          variant: ${{ matrix.variant }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.variant }}
+          if-no-files-found: error
+          path: |
+            dist/*_all.ipk
+            dist/*.manifest.json
+            dist/build-info.json
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-legacy
+          path: packages/legacy
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-modern
+          path: packages/modern
+      - name: Verify and prepare release assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node tools/prepare-release.cjs packages release-assets "$RELEASE_TAG" --require-clean
+      - uses: ncipollo/release-action@v1
+        with:
           prerelease: true
-          draft: false
-          allowUpdates: true
-          omitNameDuringUpdate: true
-          omitBodyDuringUpdate: true
-          omitDraftDuringUpdate: true
-          omitPrereleaseDuringUpdate: true
           artifactErrorsFailBuild: true
-          artifacts: 'dist/*_all.ipk,dist/*.manifest.json'
+          artifacts: 'release-assets/*'

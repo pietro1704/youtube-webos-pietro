@@ -1,0 +1,35 @@
+name: Validate package
+description: Shared release and PR gates
+inputs:
+  variant:
+    required: true
+    description: legacy or modern
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: npm ci
+    - name: Lint and type-check
+      if: inputs.variant == 'legacy'
+      shell: bash
+      run: npm run lint && npm run type-check
+    - name: Build and test legacy bundle
+      if: inputs.variant == 'legacy'
+      shell: bash
+      run: npm test
+    - name: Build and test modern bundle
+      if: inputs.variant == 'modern'
+      shell: bash
+      run: npm run build:modern && npm run test:modern
+    - name: Instrumented bundle regression
+      shell: bash
+      run: node bench/run-perf-tests.cjs ${{ inputs.variant }}
+    - name: Native audio playback in Chrome
+      if: inputs.variant == 'modern'
+      shell: bash
+      run: npm run test:native-audio-browser
+    - shell: bash
+      run: npm run package
+    - shell: bash
+      run: npm run manifest
+
