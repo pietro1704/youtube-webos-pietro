@@ -523,6 +523,18 @@ function createOptionsPanel() {
 	  sponsorBlockUI.togglePopup(hasPopups[activePage] && isWatchPage());
 	};
 
+  // Keep the entire row readable, including when only its small input gains
+  // focus. Numeric scrollTop works on legacy webOS without scrollIntoView options.
+  elmContainer.addEventListener('focusin', (evt) => {
+    const page = evt.target.closest('.ytaf-settings-page');
+    if (!page || page.parentElement !== elmContainer) return;
+    const row = evt.target.closest('label, .shortcut-control-row') || evt.target;
+    const bounds = page.getBoundingClientRect();
+    const target = row.getBoundingClientRect();
+    if (target.top < bounds.top) page.scrollTop -= bounds.top - target.top;
+    else if (target.bottom > bounds.bottom) page.scrollTop += target.bottom - bounds.bottom;
+  });
+
   // Keyboard Navigation for the Options Panel
   elmContainer.addEventListener('keydown', (evt) => {
     if (getKeyColor(evt.charCode || evt.keyCode) === 'green') return; // Let global handler handle close if mapped to green (or config_menu logic)
@@ -564,14 +576,17 @@ function createOptionsPanel() {
 
 		  if (visiblePage) {
 			  pageFocusables = Array.from(visiblePage.querySelectorAll('input:not([disabled]), .shortcut-control-row, button:not([disabled])'))
-				  .filter(el => el.tabIndex !== -1);
+				  .filter(el => el.tabIndex !== -1 && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
 		  }
           
           const focusables = [activeTabBtn, ...pageFocusables].filter(Boolean);
           
           if (focusables.length > 0) {
-            if (dir === 'up') focusables[focusables.length - 1].focus();
-            else if (dir === 'down') focusables[0].focus();
+            // Spatial navigation may scroll without moving focus at a clipped
+            // edge. Continue with the adjacent control instead of jumping to tabs.
+            const index = focusables.indexOf(preFocus);
+            const next = (index + (dir === 'up' ? -1 : 1) + focusables.length) % focusables.length;
+            focusables[next].focus();
           }
         }
         evt.preventDefault(); evt.stopPropagation(); return;
@@ -774,7 +789,7 @@ function showOptionsPanel(visible) {
     // Arm the polyfill's search-origin tracking for as long as we might call
     // navigate(); the focus below is what seeds it.
     setSpatialNav('trackFocus', true);
-    optionsPanel.style.display = 'block';
+    optionsPanel.style.display = 'flex';
     // The other three tabs are built here, one per frame, now that the panel is
     // on screen. Doing it inside the keydown handler is what made opening the
     // panel a 170ms freeze on webOS 3.

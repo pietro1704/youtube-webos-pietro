@@ -92,7 +92,7 @@ function check(name, condition, detail) {
     Object.defineProperty(event, 'keyCode', { get: () => code });
     target.dispatchEvent(event);
   };
-  const open = () => doc.querySelector('.ytaf-ui-container')?.style.display === 'block';
+  const open = () => doc.querySelector('.ytaf-ui-container')?.style.display === 'flex';
   const menu = doc.createElement('div');
   menu.className = 'AmQJbe';
   // Native C5 menu: each renderer occupies one fixed-height virtual-list cell.
