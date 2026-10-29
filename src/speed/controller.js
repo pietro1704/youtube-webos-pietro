@@ -405,7 +405,7 @@ export function createSpeedController({
 
   return {
     diagnostic: () => ({ speed: currentSpeed, videoId: lastVideoId, lastError,
-      audio: activeSink ? { codec: activeSink.engine.cfg && activeSink.engine.cfg.codec,
+      audio: activeSink ? { output: activeSink.engine.output.type, codec: activeSink.engine.cfg && activeSink.engine.cfg.codec,
         contextState: activeSink.engine.ctx.state, baseLatency: activeSink.engine.ctx.baseLatency,
         outputLatency: activeSink.engine.ctx.outputLatency,
         compensatedLatency: activeSink.engine.outputLatencyS,
