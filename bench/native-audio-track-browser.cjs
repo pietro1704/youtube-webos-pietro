@@ -1,3 +1,4 @@
+const { waitForDevToolsPort } = require('./chromium-ready.cjs');
 // Generated tone fixture: ffmpeg -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1
 // -c:a libopus -b:a 32k timeline-tone.webm
 // Generated black 64x64 H.264 fixture; no external network or TV required.
@@ -103,10 +104,7 @@ const server = http.createServer((req, res) => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   browser = spawn(chrome, ['--headless','--mute-audio','--no-sandbox','--disable-gpu','--autoplay-policy=no-user-gesture-required','--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'], {stdio:['ignore','ignore','pipe']});
   let diagnostic='';browser.stderr.on('data',data=>{diagnostic=(diagnostic+data).slice(-4000)});
-  const portFile=path.join(profile,'DevToolsActivePort');
-  for(let i=0;i<300&&!fs.existsSync(portFile)&&browser.exitCode===null;i++)await wait(100);
-  assert.ok(fs.existsSync(portFile),'browser started: '+diagnostic);
-  const port=fs.readFileSync(portFile,'utf8').split('\n')[0];
+  const port = await waitForDevToolsPort(profile, browser).catch(error => { throw new Error(error.message + ': ' + diagnostic); });
   const targets=await(await fetch('http://127.0.0.1:'+port+'/json/list')).json();socket=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
   await new Promise((r,j)=>{socket.once('open',r);socket.once('error',j)});
   let id=0;const pending=new Map();socket.on('message',raw=>{const m=JSON.parse(raw),p=pending.get(m.id);if(p){clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result)}});

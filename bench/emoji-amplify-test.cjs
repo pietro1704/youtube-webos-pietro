@@ -71,8 +71,11 @@ function run(emojiOn, withEmojiText) {
         await tick();
       }
       const endNodes = win.document.getElementsByTagName('*').length;
-      resolve({ records: records - baseRecords, nodeGrowth: endNodes - baseNodes,
-                injected: win.document.querySelectorAll('.twemoji-injected').length });
+      const result = { records: records - baseRecords, nodeGrowth: endNodes - baseNodes,
+        injected: win.document.querySelectorAll('.twemoji-injected').length };
+      spy.disconnect();
+      win.close();
+      resolve(result);
     }, 400);
   });
 }
