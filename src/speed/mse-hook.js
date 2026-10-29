@@ -1,3 +1,4 @@
+import { createNativeAudioTrack } from './native-audio-track.js';
 import {
   classifyMp4,
   rewriteInitTimescale,
@@ -164,6 +165,8 @@ export function installMseHook(
   { getSpeed, createAudioSink, onRateRequest, onError, onNativeAudio }
 ) {
   const origAddSourceBuffer = win.MediaSource.prototype.addSourceBuffer;
+  const origRemoveSourceBuffer = win.MediaSource.prototype.removeSourceBuffer;
+  const liveSessions = new Set();
   const origCreateObjectURL = win.URL.createObjectURL;
   const origSrcDesc = Object.getOwnPropertyDescriptor(
     win.HTMLMediaElement.prototype,
@@ -187,6 +190,7 @@ export function installMseHook(
     if (cur && cur.shim.isAttached()) cur.shim.detach();
     const shim = attachElementShim(el, session.timeMap, { onRateRequest });
     elToShim.set(el, { shim, session });
+    if (session.sink && session.sink.attachVideo) session.sink.attachVideo(el);
   }
 
   win.URL.createObjectURL = function (obj) {
@@ -235,9 +239,29 @@ export function installMseHook(
         speed,
         audio: null,
         video: null,
+        nativeAudio: null,
+        closed: false,
+        sink: null,
         timeMap: new SpeedTimeMap(speed)
       };
       sessions.set(this, session);
+      liveSessions.add(session);
+      const ms = this;
+      session.reportError = error => {
+        const element = msToEl.get(ms);
+        if (session.closed || (element && urlToMs.get(element.src) !== ms)) return;
+        if (onError) onError(error);
+      };
+      session.close = () => {
+        if (session.closed) return;
+        session.closed = true;
+        session.audio?.close();
+        session.nativeAudio?.destroy();
+        session.sink?.destroy?.();
+        ms.removeEventListener('sourceclose', session.close);
+        liveSessions.delete(session);
+      };
+      ms.addEventListener('sourceclose', session.close);
       patchMediaSource(this, session);
 
       const el = msToEl.get(this);
@@ -246,22 +270,18 @@ export function installMseHook(
 
     if (isVideo) {
       const realSb = origAddSourceBuffer.call(this, mime);
-      patchVideoSourceBuffer(realSb, mime, speed, onError);
+      patchVideoSourceBuffer(realSb, mime, speed, session.reportError);
       session.video = realSb;
       return realSb;
     } else if (isAudio) {
-      const sink = createAudioSink({
-        speed,
-        element: msToEl.get(this) || null,
-        createNativeAudioSource() {
-          const mediaSource = new win.MediaSource();
-          // This internal silent route must not enter our accelerated-audio
-          // interception or release the engine that owns it.
-          mediaSource.addSourceBuffer = mime => origAddSourceBuffer.call(mediaSource, mime);
-          return { mediaSource, url: origCreateObjectURL.call(win.URL, mediaSource) };
-        }
-      });
-      const fakeSb = new FakeAudioSourceBuffer(win, mime, speed, sink, onError);
+      if (session.audio) throw new Error('Only one accelerated audio track is supported');
+      try {
+        session.nativeAudio = createNativeAudioTrack({ win, mediaSource: this, speed,
+          addSourceBuffer: type => origAddSourceBuffer.call(this, type), onError: session.reportError });
+      } catch (error) { session.reportError(error); throw error; }
+      const sink = createAudioSink({ speed, element: msToEl.get(this) || null });
+      session.sink = sink;
+      const fakeSb = new FakeAudioSourceBuffer(win, mime, speed, sink, session.reportError, session.nativeAudio);
       session.audio = fakeSb;
       return fakeSb;
     } else {
@@ -289,39 +309,39 @@ export function installMseHook(
       });
     }
 
-    let origSourceBuffersDesc = Object.getOwnPropertyDescriptor(
-      ms,
-      'sourceBuffers'
-    );
-    if (!origSourceBuffersDesc) {
-      origSourceBuffersDesc = Object.getOwnPropertyDescriptor(
-        win.MediaSource.prototype,
-        'sourceBuffers'
-      );
-    }
-    if (origSourceBuffersDesc) {
-      Object.defineProperty(ms, 'sourceBuffers', {
+    for (const property of ['sourceBuffers', 'activeSourceBuffers']) {
+      const descriptor = Object.getOwnPropertyDescriptor(ms, property) ||
+        Object.getOwnPropertyDescriptor(win.MediaSource.prototype, property);
+      if (!descriptor) continue;
+      Object.defineProperty(ms, property, {
         get() {
-          const realSbList = origSourceBuffersDesc.get.call(this);
-          const list = {
-            length: realSbList.length + (session.audio ? 1 : 0),
-            item(idx) {
-              if (idx < realSbList.length) return realSbList.item(idx);
-              if (idx === realSbList.length && session.audio)
-                return session.audio;
-              return undefined;
-            }
-          };
-          for (let i = 0; i < realSbList.length; i++) {
-            list[i] = realSbList[i];
+          const native = descriptor.get.call(this);
+          const visible = [];
+          for (let i = 0; i < native.length; i++) {
+            const buffer = native.item ? native.item(i) : native[i];
+            visible.push(buffer === session.nativeAudio?.buffer ? session.audio : buffer);
           }
-          if (session.audio) {
-            list[realSbList.length] = session.audio;
-          }
+          const list = { length: visible.length, item: index => visible[index] };
+          visible.forEach((buffer, index) => { list[index] = buffer; });
           return list;
         }
       });
     }
+  }
+
+  if (typeof origRemoveSourceBuffer === 'function') {
+    win.MediaSource.prototype.removeSourceBuffer = function (buffer) {
+      const session = sessions.get(this);
+      if (session && buffer === session.audio) {
+        const native = session.nativeAudio.buffer;
+        session.audio.close();
+        session.nativeAudio.destroy();
+        session.sink?.destroy?.();
+        session.audio = null; session.nativeAudio = null; session.sink = null;
+        return origRemoveSourceBuffer.call(this, native);
+      }
+      return origRemoveSourceBuffer.call(this, buffer);
+    };
   }
 
   function looksLikeInitStart(u8) {
@@ -432,6 +452,8 @@ export function installMseHook(
   }
 
   function uninstall() {
+    for (const session of [...liveSessions]) session.close();
+    if (origRemoveSourceBuffer) win.MediaSource.prototype.removeSourceBuffer = origRemoveSourceBuffer;
     win.MediaSource.prototype.addSourceBuffer = origAddSourceBuffer;
     win.URL.createObjectURL = origCreateObjectURL;
     if (origSrcDesc) {
@@ -451,13 +473,14 @@ export function installMseHook(
   Object.setPrototypeOf(SourceBufferEventTarget, win.EventTarget);
 
   class FakeAudioSourceBuffer extends SourceBufferEventTarget {
-    constructor(win, mime, speed, sink, onError) {
+    constructor(win, mime, speed, sink, onError, nativeTrack) {
       super();
       this.win = win;
       this.mime = mime;
       this.speed = speed;
       this.sink = sink;
       this.onError = onError;
+      this.nativeTrack = nativeTrack;
 
       this.isMp4 = mime.includes('mp4');
       this.isWebm = mime.includes('webm');
@@ -499,6 +522,7 @@ export function installMseHook(
     }
 
     _addRange(start, end) {
+      this.nativeTrack.append(start, end);
       this.bufferedRanges.push({ start, end });
       this.bufferedRanges.sort((a, b) => a.start - b.start);
       const merged = [];
@@ -518,7 +542,7 @@ export function installMseHook(
     }
 
     appendBuffer(data) {
-      if (this.updating) {
+      if (this.closed || this.updating) {
         const err = new Error('InvalidStateError');
         err.name = 'InvalidStateError';
         throw err;
@@ -695,9 +719,9 @@ export function installMseHook(
       // Real SourceBuffers end an update asynchronously; an abort() in between
       // ends it right away, and this late callback must then do nothing.
       const gen = ++this._gen;
-      Promise.resolve().then(() => {
+      this.nativeTrack.whenIdle().then(ok => {
         if (gen !== this._gen || !this.updating) return;
-        this.dispatchEvent(new win.Event('update'));
+        this.dispatchEvent(new win.Event(ok ? 'update' : 'error'));
         this.updating = false;
         const e = new win.Event('updateend');
         this.dispatchEvent(e);
@@ -706,7 +730,7 @@ export function installMseHook(
     }
 
     remove(start, end) {
-      if (this.updating) {
+      if (this.closed || this.updating) {
         const err = new Error('InvalidStateError');
         err.name = 'InvalidStateError';
         throw err;
@@ -715,6 +739,7 @@ export function installMseHook(
       this.dispatchEvent(new win.Event('updatestart'));
 
       this.sink.discard(start, end);
+      this.nativeTrack.remove(start, end);
 
       const result = [];
       for (const r of this.bufferedRanges) {
@@ -734,6 +759,7 @@ export function installMseHook(
     }
 
     abort() {
+      this.nativeTrack.cancel();
       this.rest = new Uint8Array(0);
       if (this.updating) {
         this._gen++;
@@ -747,7 +773,14 @@ export function installMseHook(
       }
     }
 
+    close() {
+      if (this.closed) return;
+      this.closed = true;
+      this.abort();
+    }
+
     changeType(type) {
+      if (this.closed) throw Object.assign(new Error('SourceBuffer removed'), { name: 'InvalidStateError' });
       this.mime = type;
       this.isMp4 = type.includes('mp4');
       this.isWebm = type.includes('webm');

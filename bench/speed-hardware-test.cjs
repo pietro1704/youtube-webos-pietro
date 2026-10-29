@@ -94,8 +94,8 @@ function boot(honours) {
     set appendWindowEnd(v) { this._appendWindowEnd = v; }
     get buffered() { return this._buffered; }
   }
-  class FakeMediaSource {
-    constructor() { this._buffers = []; this._duration = NaN; }
+  class FakeMediaSource extends win.EventTarget {
+    constructor() { super(); this._buffers = []; this._duration = NaN; this.readyState = 'open'; }
     addSourceBuffer() {
       const buffer = new FakeSourceBuffer();
       this._buffers.push(buffer);
