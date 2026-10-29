@@ -54,7 +54,7 @@ test('speed choice persists and reloads at the same content position', () => {
   flush();
   assert.deepEqual(writes, [['defaultPlaybackSpeed', '2']]);
   assert.deepEqual(calls, [
-    ['quality', 'hd1080', 'hd1080'],
+    ['quality', 'hd2160', 'hd2160'],
     ['load', 'test-video', 42]
   ]);
 });
@@ -149,7 +149,7 @@ test('reset in the next video does not inherit the prior video burst rate', () =
 
 for (const [preference, available, expected] of [
   ['hd720', ['hd2160', 'hd1080', 'hd720'], 'hd720'],
-  ['hd2160', ['hd2160', 'hd720', 'medium'], 'hd720'],
+  ['hd2160', ['hd2160', 'hd720', 'medium'], 'hd2160'],
   ['auto', ['hd2160', 'hd1080', 'hd720'], 'hd1080'],
   ['hd720', ['medium', 'small'], 'medium'],
   ['hd720', [], 'auto']

@@ -649,7 +649,7 @@ function createOptionsPanel() {
   createElement('div', { text: 'Audio offset applies to accelerated playback. Positive values advance audio; negative values delay it.', style: { color: '#aaa', fontSize: '1.6vh' } }),
   createVideoQualityControl(),
   ...(typeof window.AudioDecoder === 'function' && typeof window.MediaSource === 'function' ? [
-    createElement('div', { text: 'Above 1.25x, quality is limited to 1080p. Your saved quality returns at normal speed.', style: { color: '#aaa', fontSize: '1.6vh' } })
+    createElement('div', { text: 'Automatic quality is limited to 1080p above 1.25x. An explicit resolution applies at every speed.', style: { color: '#aaa', fontSize: '1.6vh' } })
   ] : []),
   createVideoCodecControl(),
   createConfigCheckbox('hideEndcards'),
