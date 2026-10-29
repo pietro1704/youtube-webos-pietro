@@ -614,3 +614,43 @@
 .ytaf-settings-section .shortcut-control-row {
   margin: 0 0 0.2vh;
 }
+
+/* Feature status text and actions share the option typography, rather than
+   inheriting the panel's large heading-sized font or the browser's tiny button
+   default. Keep dynamic titles and build identifiers within the scroll page. */
+.ytaf-ui-container > div.ytaf-settings-page {
+  font-size: 2.1vh;
+  line-height: 1.35;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+#ytaf-video-queue button,
+#ytaf-caption-controls button,
+#ytaf-sidebar-controls button {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 3.5vh;
+  margin: 0.4vh 0.5vh 0.4vh 0;
+  padding: 0.5vh 1vh;
+  font: inherit;
+  line-height: 1.3;
+  white-space: normal;
+  color: inherit;
+  background: #002840;
+  border: 1px solid #667780;
+  border-radius: 0.4vh;
+}
+
+#ytaf-video-queue button:focus,
+#ytaf-caption-controls button:focus,
+#ytaf-sidebar-controls button:focus {
+  outline: 0.2vh solid #00d4ff;
+  outline-offset: -0.2vh;
+}
+
+#ytaf-video-queue button:disabled,
+#ytaf-caption-controls button:disabled,
+#ytaf-sidebar-controls button:disabled {
+  opacity: 0.5;
+}
