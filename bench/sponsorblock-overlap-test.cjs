@@ -1,12 +1,15 @@
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const { test, before } = require('node:test');
 const fs = require('node:fs');
 const vm = require('node:vm');
+let createSegmentMuter;
+before(async () => { ({ createSegmentMuter } = await import('../src/sponsorblock-mute.js')); });
 
 function harness(segments = []) {
   const config = { sbMode_sponsor: 'auto_skip', sbMode_intro: 'manual_skip' };
   const notices = [];
   const context = {
+    createSegmentMuter,
     configGetAll: () => config, configAddChangeListener() {}, configRemoveChangeListener() {},
     segmentTypes: {}, isLegacyWebOS: () => false, getVideo: () => null,
     sponsorBlockLabels: { update() {} }, requestAnimationFrame: () => 1, cancelAnimationFrame() {},

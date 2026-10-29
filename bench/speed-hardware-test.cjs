@@ -20,7 +20,7 @@ const bundlePath = process.argv[2] || ROOT + '/dist/webOSUserScripts/userScript.
  *   'no-pitch-correction' -> works only with pitch correction off
  *   'default-rate'        -> works only via defaultPlaybackRate
  */
-function boot(honours) {
+function boot(honours, config = {}) {
   const dom = new JSDOM(
     `<!doctype html><html><body class="WEB_PAGE_TYPE_WATCH"><ytlr-app>
        <div id="ytlr-player__player-container">
@@ -39,7 +39,8 @@ function boot(honours) {
   win.localStorage.setItem('ytaf-configuration', win.JSON.stringify({
     enablePlaybackSpeed: true, enableAdBlock: true, enableSponsorBlock: false,
     enableReturnYouTubeDislike: false, enableLegacyEmojiFix: false,
-    upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false
+    upgradeThumbnails: false, enableAutoLogin: false, forceHighResVideo: false,
+    ...config
   }));
 
   const video = win.document.querySelector('video');
