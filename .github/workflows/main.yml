@@ -34,6 +34,8 @@ jobs:
       - name: Build and test modern bundle
         if: matrix.variant == 'modern'
         run: npm run build:modern && npm run test:modern
+      - name: Instrumented bundle regression
+        run: node bench/run-perf-tests.cjs ${{ matrix.variant }}
       - name: Native audio playback in Chrome
         if: matrix.variant == 'modern'
         run: npm run test:native-audio-browser
