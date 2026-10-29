@@ -1,3 +1,4 @@
+import { sanitizeCaptionStyle } from './captions/preferences.js';
 import { watchedPageNames, watchedThresholdModes } from './watched/preferences.js';
 import { playbackSpeedModes, videoQualityModes, audioSyncModes } from './playback-preferences.js';
 
@@ -115,19 +116,19 @@ const configOptions = new Map([
   ['sidebarOrder', { default: [], desc: 'Sidebar link order' }],
   ['hideSidebarChannels', { default: false, desc: 'Hide subscribed channels in sidebar' }],
   ['enablePersistentCaptions', { default: false, desc: 'Persistent captions' }],
-  ['captionLanguage', { default: 'native', desc: 'Caption language' }],
+  ['captionLanguage', { default: 'native', desc: 'Caption language', pattern: /^[\w-]{2,35}$/ }],
   ['captionFontSize', { default: 'native', desc: 'Caption size', values: ['native', '-2', '-1', '0', '1', '2', '3', '4'] }],
   ['captionStyle', { default: 'saved', desc: 'Caption style', values: ['saved', 'white', 'yellow', 'transparent', 'bold'] }],
-  ['captionSavedStyle', { default: null, desc: 'Saved native caption appearance' }],
+  ['captionSavedStyle', { default: null, desc: 'Saved native caption appearance', normalize: normalizeCaptionStyle }],
   ['captionAutoTranslate', { default: false, desc: 'Offer available automatic translations' }],
   ['enableVideoQueue', { default: false, desc: 'Enable video queue' }],
   ['showBuildBadge', { default: false, desc: 'Show build in header' }],
-  ['uiTheme', { default: 'blue-force-field', desc: 'UI Theme' }],
+  ['uiTheme', { default: 'blue-force-field', desc: 'UI Theme', values: ['blue-force-field', 'classic-red'] }],
   ['enableAdBlock', { default: true, desc: 'Ad Blocking' }],
   ['enableTrackingBlock', { default: false, desc: 'Reduce Telemetry & Tracking' }],
   ['enableReturnYouTubeDislike', { default: true, desc: 'Return YouTube Dislike' }],
   ['upgradeThumbnails', { default: false, desc: 'Max Thumbnail Quality' }],
-  ['thumbnailQualityMode', { default: 'safe', desc: 'Thumbnail Strategy' }],
+  ['thumbnailQualityMode', { default: 'safe', desc: 'Thumbnail Strategy', values: Object.keys(thumbnailQualityModes) }],
   ['removeGlobalShorts', { default: false, desc: 'Remove Shorts (Global)' }],
   ['removeLiveVideos', { default: false, desc: 'Remove Live Videos (Global)' }],
   ['removeTopLiveGames', { default: false, desc: 'Remove Top Live Games' }],
@@ -150,13 +151,13 @@ const configOptions = new Map([
   ['hideAnnotations', { default: true, desc: 'Hide Video Annotations and Channel Logo' }],
   ['hideEndcards', { default: false, desc: 'Hide Endcards' }],
   ['enableAutoLogin', { default: true, desc: 'Bypass Nag Screens' }],
-  ['logoStyle', { default: 'default', desc: 'YouTube Logo' }],
+  ['logoStyle', { default: 'default', desc: 'YouTube Logo', values: Object.keys(logoStyles) }],
   ['showWatch', { default: false, desc: 'Display Time in UI' }],
   ['enableOledCareMode', { default: false, desc: 'OLED-Care Mode (True Black UI)' }],
-  ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity' }],
+  ['videoShelfOpacity', { default: 100, desc: 'Video shelf opacity', min: 0, max: 100 }],
   ['fixMultilineTitles', { default: true, desc: 'Fix Multiline Titles' }],
   ['removeBlackBorders', { default: false, desc: 'New Liquid Glass UI' }],
-  ['forcePreviews', { default: 'disabled', desc: 'Force Previews' }],
+  ['forcePreviews', { default: 'disabled', desc: 'Force Previews', values: Object.keys(forcePreviewModes) }],
   ['enableLegacyEmojiFix', { default: true, desc: 'Emoji + Characters Fix' }],
   ['hideGuestSignInPrompts', { default: false, desc: 'Guest Mode: Hide Sign-in Buttons' }],
   ['forceHighResVideo', { default: false, desc: 'Force Max Quality' }],
@@ -165,9 +166,13 @@ const configOptions = new Map([
   ['defaultPlaybackSpeed', { default: '1', desc: 'Default Speed', values: Object.keys(playbackSpeedModes) }],
   ['audioSyncOffsetMs', { default: '0', desc: 'Audio offset (ms, + advances)', values: Object.keys(audioSyncModes) }],
   ['dearrowMode', { default: 'titles_thumbnails', desc: 'DeArrow', values: Object.keys(dearrowModes) }],
-  ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec' }],
+  ['forceVideoCodec', { default: 'auto', desc: 'Force Video Codec', values: Object.keys(videoCodecModes) }],
   ['disableNotifications', { default: false, desc: 'Disable Notifications' }]
 ]);
+
+for (const [key, option] of configOptions) {
+  if (key.indexOf('sbMode_') === 0) option.values = Object.keys(key === 'sbMode_highlight' ? sbModesHighlight : sbModes);
+}
 
 for (const page of Object.keys(watchedPageNames)) {
   configOptions.set('watchedOn_' + page, { default: page === 'home' || page === 'subscriptions', desc: 'Filter watched: ' + watchedPageNames[page] });
@@ -175,7 +180,7 @@ for (const page of Object.keys(watchedPageNames)) {
 
 // Register shortcut keys 0-9
 for (let i = 0; i < 10; i++) {
-  configOptions.set(`shortcut_key_${i}`, { default: i === 5 ? 'chapter_skip' : 'none', desc: `Key ${i} Action` });
+  configOptions.set(`shortcut_key_${i}`, { default: i === 5 ? 'chapter_skip' : 'none', desc: `Key ${i} Action`, values: Object.keys(shortcutActions) });
 }
 
 // Register shortcut keys Red, Green, Blue
@@ -184,12 +189,12 @@ for (let i = 0; i < 10; i++) {
     if (color === 'red') def = 'oled_toggle';
     if (color === 'green') def = 'config_menu';
     if (color === 'blue') def = 'sb_manual_skip';
-    configOptions.set(`shortcut_key_${color}`, { default: def, desc: `${color.charAt(0).toUpperCase() + color.slice(1)} Button Action` });
+    configOptions.set(`shortcut_key_${color}`, { default: def, desc: `${color.charAt(0).toUpperCase() + color.slice(1)} Button Action`, values: Object.keys(shortcutActions) });
 });
 
 for (const key of Object.keys(segmentTypes)) {
   const value = segmentTypes[key];
-  configOptions.set(`${key}Color`, { default: value.color, desc: `Color for ${value.name}` });
+  configOptions.set(`${key}Color`, { default: value.color, desc: `Color for ${value.name}`, pattern: /^#[0-9a-f]{6}$/i });
 }
 
 const defaultConfig = {};
@@ -198,9 +203,12 @@ for (const [k, v] of configOptions) { defaultConfig[k] = v.default; }
 const changeListeners = new Map();
 
 function loadStoredConfig() {
-  const storage = window.localStorage.getItem(CONFIG_KEY);
-  if (storage === null) return null;
-  try { return JSON.parse(storage); } catch { return null; }
+  try {
+    const storage = window.localStorage.getItem(CONFIG_KEY);
+    if (storage === null) return null;
+    const value = JSON.parse(storage);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch { return null; }
 }
 
 // MUTATE IN PLACE ONLY — adblock.js (and other modules) hold a module-level
@@ -214,8 +222,21 @@ if (storedConfig.forceHighResVideo === true && storedConfig.preferredVideoQualit
   storedConfig.preferredVideoQuality = 'hd2160';
 }
 
+function normalizeCaptionStyle(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const safe = sanitizeCaptionStyle(value);
+  return Object.keys(safe).length ? safe : null;
+}
+
 function normalizeOptionValue(option, value) {
+  if (option.normalize) return option.normalize(value);
   if (option.values && option.values.indexOf(value) === -1) return option.default;
+  if (Array.isArray(option.default)) {
+    return Array.isArray(value) ? value.filter(item => typeof item === 'string').slice(0, 100) : [];
+  }
+  if (typeof value !== typeof option.default) return option.default;
+  if (typeof value === 'number' && (!isFinite(value) || value < option.min || value > option.max)) return option.default;
+  if (option.pattern && !option.pattern.test(value)) return option.default;
   return value;
 }
 
@@ -232,7 +253,7 @@ for (const [key, option] of configOptions) {
 let pendingWriteTimer = null;
 function writeNow() {
   pendingWriteTimer = null;
-  try { window.localStorage[CONFIG_KEY] = JSON.stringify(localConfig); }
+  try { window.localStorage.setItem(CONFIG_KEY, JSON.stringify(localConfig)); }
   catch { /* quota / SecurityError on private mode */ }
 }
 const flushPendingWrite = () => {
