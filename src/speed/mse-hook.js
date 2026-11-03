@@ -325,7 +325,7 @@ export function installMseHook(
         session.nativeAudio = createNativeAudioTrack({ win, mediaSource: this, speed,
           addSourceBuffer: type => origAddSourceBuffer.call(this, type), onError: session.reportError });
       } catch (error) { session.reportError(error); throw error; }
-      const sink = createAudioSink({ speed, element: msToEl.get(this)?.element || null });
+      const sink = createAudioSink({ speed, element: msToEl.get(this)?.element || null, hasNativeAudioTrack: true });
       session.sink = sink;
       const fakeSb = new FakeAudioSourceBuffer(win, mime, speed, sink, session.reportError, session.nativeAudio);
       session.audio = fakeSb;

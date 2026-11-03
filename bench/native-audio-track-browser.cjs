@@ -19,8 +19,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser, socket;
 const fixture = `<!doctype html><video id="video" muted></video><script type="module">
 import { installMseHook } from '/src/speed/mse-hook.js';
-import { silentAacBase64 } from '/src/speed/silent-aac.js';
 import { AudioEngine } from '/src/speed/audio-engine.js';
+import { createSpeedController } from '/src/speed/controller.js';
 import { audioConfigFromWebmInit, demuxClusters, findTimecodeScale } from '/src/speed/containers.js';
 const check=(ok,msg)=>{if(!ok)throw Error(msg)};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -54,31 +54,40 @@ async function audioTimelineGaps(){
 }
 window.__testDone=(async()=>{
  const errors=[],sinks=[];let speed=2;
+ const controller=createSpeedController({win:window,getPlayer:()=>null,notify:message=>errors.push(message),
+  configRead:key=>({enablePlaybackSpeed:true,defaultPlaybackSpeed:'2',audioSyncOffsetMs:'0'})[key]});
  const nativeBuffers=Object.getOwnPropertyDescriptor(MediaSource.prototype,'sourceBuffers').get;
  const hook=installMseHook(window,{getSpeed:()=>speed,onError:e=>errors.push(e.message),onRateRequest(){},
-  createAudioSink(options){check(!options.createNativeAudioSource,'must not create a second native player');const sink={destroyed:false,configure(){},push(){check(!this.destroyed,'push to retired sink')},reset(){},discard(){},destroy(){this.destroyed=true}};sinks.push(sink);return sink;}});
+  createAudioSink(options){check(!options.createNativeAudioSource,'must not create a second native player');const sink=controller.createAudioSink(options);sinks.push(sink);return sink;}});
  const video=document.getElementById('video');
  const bytes=new Uint8Array(await(await fetch('/bench/fixtures/native-track-video.mp4')).arrayBuffer());
- const audio=Uint8Array.from(atob(silentAacBase64),c=>c.charCodeAt(0));
+ const audio=new Uint8Array(await(await fetch('/bench/fixtures/timeline-tone.webm')).arrayBuffer());
  async function append(sb,data){const done=once(sb,'updateend');sb.appendBuffer(data);await done;}
  async function load(){
   const ms=new MediaSource(),url=URL.createObjectURL(ms);const opened=once(ms,'sourceopen');video.src=url;await opened;
   URL.revokeObjectURL(url); // Attached playback must survive releasing the URL registry entry.
-  const a=ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
+  const a=ms.addSourceBuffer('audio/webm; codecs="opus"');
   const v=ms.addSourceBuffer('video/mp4; codecs="avc1.42c00a"');
   check(nativeBuffers.call(ms).length===2,'real native video and audio buffers');
   check(ms.sourceBuffers.length===2&&ms.sourceBuffers.item(0)===a&&ms.sourceBuffers.item(1)===v,'public buffer identity/order');
   await Promise.all([append(v,bytes),append(a,audio)]);
-  a.timestampOffset=2.021333333333333;await append(a,audio);
+  for(let offset=1;offset<4;offset++){a.timestampOffset=offset;await append(a,audio);}
   ms.endOfStream();await video.play();return {ms,url,a,v};
  }
  try{
   const first=await load();
   const physicalTime=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'currentTime').get;
   const physicalDuration=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'duration').get;
-  check(Math.abs(physicalDuration.call(video)-2.026666)<0.03,'native duration is halved for 2x');
+  check(Math.abs(physicalDuration.call(video)-2)<0.03,'native duration is halved for 2x');
   const begin=video.currentTime;await wait(600);const advanced=video.currentTime-begin;
   check(advanced>0.2,'real A/V playback must advance');
+  check(sinks[0].output.type==='audio-context','native video audio must bypass the MediaStream resampler');
+  check(sinks[0].scheduledFrames>0&&sinks[0].lastPcmPeak>0.01,'real Opus tone must reach scheduled PCM');
+  const toneBuffers=Array.from(sinks[0].sources).map(source=>source.node.buffer);
+  let crossings=0,frames=0;
+  for(const buffer of toneBuffers){const samples=buffer.getChannelData(0);frames+=samples.length;for(let i=1;i<samples.length;i++)if(samples[i-1]<=0&&samples[i]>0)crossings++;}
+  const toneHz=crossings*48000/frames;
+  check(toneHz>420&&toneHz<460,'2x tone must preserve 440Hz from startup: '+toneHz);
   check(Math.abs(video.currentTime-physicalTime.call(video)*2)<0.01,'content clock is twice the physical clock');
   check(video.readyState>=3,'native A/V ready');check(first.ms.activeSourceBuffers[0]===first.a,'active buffer identity');check(document.querySelectorAll('audio').length===0,'no sidecar native element');
   const seeked=once(video,'seeked');video.currentTime=2.5;await seeked;check(Math.abs(video.currentTime-2.5)<0.1,'seek mapped exactly once');
@@ -90,8 +99,8 @@ window.__testDone=(async()=>{
   URL.revokeObjectURL(first.url);URL.revokeObjectURL(second.url);
   check(sinks[1].destroyed,'detach releases current sink');
   const audioTimeline=await audioTimelineGaps();
-  return {advanced,sourceBuffers:2,seek:true,replacement:true,errors,audioTimeline};
- }finally{hook.uninstall();}
+  return {advanced,toneHz,output:'audio-context',sourceBuffers:2,seek:true,replacement:true,errors,audioTimeline};
+ }finally{hook.uninstall();controller.destroy();}
 })().then(result=>window.__testResult={result},error=>window.__testResult={error:error.stack});
 </script>`;
 const server = http.createServer((req, res) => {

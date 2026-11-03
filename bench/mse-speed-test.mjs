@@ -258,6 +258,7 @@ test('accelerated native audio belongs to the video MediaSource without a second
     const video = ms.addSourceBuffer('video/mp4; codecs="avc1.4d401f"');
     const audio = ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
     assert.equal(ms._buffers.length, 2, 'video and silent native audio must share one MediaSource');
+    assert.equal(options.hasNativeAudioTrack, true, 'the video carrier must bypass MediaStream pitch correction');
     assert.equal(options.createNativeAudioSource, undefined, 'no competing native player');
     assert.equal(ms.sourceBuffers.length, 2, 'internal audio must not leak as a third player buffer');
     assert.equal(ms.sourceBuffers.item(0), video);
