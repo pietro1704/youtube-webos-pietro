@@ -433,10 +433,10 @@ export function createSpeedController({
     releaseAudioSink();
   }
 
-  function createAudioSink({ speed, element, createNativeAudioSource }) {
+  function createAudioSink({ speed, element, createNativeAudioSource, hasNativeAudioTrack = false }) {
     releaseAudioSink();
 
-    const engine = new AudioEngine({ win, speed, onError, createNativeAudioSource,
+    const engine = new AudioEngine({ win, speed, onError, createNativeAudioSource, hasNativeAudioTrack,
       audioOffsetMs: Number(configRead('audioSyncOffsetMs')) || 0 });
     if (element) engine.attachVideo(element);
     activeSink = { engine };

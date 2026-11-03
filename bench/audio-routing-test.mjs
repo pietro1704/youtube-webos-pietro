@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AudioEngine } from '../src/speed/audio-engine.js';
 
-function harness({ rejectPlay = false, streamSupported = true, throwStream = false, nativeRoute = false } = {}) {
+function harness({ rejectPlay = false, streamSupported = true, throwStream = false, nativeRoute = false,
+  hasNativeAudioTrack = false, throwDirect = false } = {}) {
   const errors = [], connections = [], elements = [];
   let rejectPending;
   const revoked = [], nativeBytes = [];
@@ -11,7 +12,10 @@ function harness({ rejectPlay = false, streamSupported = true, throwStream = fal
   const track = { stopped: false, stop() { this.stopped = true; } };
   const stream = { getTracks: () => [track] };
   const destination = { stream };
-  const gain = { gain: { value: 1 }, connect(node) { connections.push(node); }, disconnect() { connections.length = 0; } };
+  const gain = { gain: { value: 1 }, connect(node) {
+    if (throwDirect && node === ctx.destination) throw new Error('direct output unavailable');
+    connections.push(node);
+  }, disconnect() { connections.length = 0; } };
   const ctx = { state: 'running', destination: { direct: true }, createGain: () => gain,
     close() { this.state = 'closed'; return Promise.resolve(); } };
   if (streamSupported) ctx.createMediaStreamDestination = () => {
@@ -29,12 +33,46 @@ function harness({ rejectPlay = false, streamSupported = true, throwStream = fal
       elements.push(el); return el;
     } }
   };
-  const engine = new AudioEngine({ win, speed: 2,
+  const engine = new AudioEngine({ win, speed: 2, hasNativeAudioTrack,
     createNativeAudioSource: nativeRoute ? () => ({ mediaSource: nativeSource, url: 'blob:native' }) : undefined, onError: error => errors.push(error) });
   return { engine, errors, connections, elements, track, ctx, destination, gain, nativeSource, nativeBytes, revoked,
     reject: () => rejectPending(new Error('play rejected')) };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+test('a native video audio track routes PCM directly without a second pitch-changing renderer', async () => {
+  const h = harness({ hasNativeAudioTrack: true, throwStream: true }); await settle();
+  try {
+    assert.deepEqual(h.errors, []);
+    assert.deepEqual(h.connections, [h.ctx.destination]);
+    assert.equal(h.engine.output.type, 'audio-context');
+    assert.equal(h.elements.length, 0, 'the video carrier already keeps eARC connected');
+    h.engine.setVolume(0.4, false);
+    assert.equal(h.gain.gain.value, 0.4);
+    h.engine.setVolume(0.4, true);
+    assert.equal(h.gain.gain.value, 0);
+  } finally { h.engine.destroy(); }
+});
+
+test('direct output connection failure is reported and does not create a stream fallback', async () => {
+  const h = harness({ hasNativeAudioTrack: true, throwDirect: true }); await settle();
+  assert.deepEqual(h.errors.map(error => error.message), ['direct output unavailable']);
+  assert.deepEqual(h.connections, []);
+  assert.equal(h.elements.length, 0);
+  h.engine.destroy();
+  assert.equal(h.ctx.state, 'closed');
+});
+
+test('retiring a direct output closes only its own context and connections', async () => {
+  const old = harness({ hasNativeAudioTrack: true });
+  const next = harness({ hasNativeAudioTrack: true }); await settle();
+  old.engine.destroy(); old.engine.destroy();
+  assert.equal(old.ctx.state, 'closed');
+  assert.deepEqual(old.connections, []);
+  assert.equal(next.ctx.state, 'running');
+  assert.deepEqual(next.connections, [next.ctx.destination]);
+  next.engine.destroy();
+});
 
 test('accelerated PCM reaches a playing media element instead of the direct Web Audio sink', async () => {
   const h = harness(); await settle();

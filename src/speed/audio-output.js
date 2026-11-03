@@ -1,13 +1,15 @@
 import { createNativeAudioRoute } from './native-audio-route.js';
 
-/** Own the PCM output route. A playing media element keeps webOS's eARC mixer
- * connected when the accelerated video has no native audio SourceBuffer. */
-export function createAudioOutput({ win, context, source, onError, createNativeAudioSource }) {
+/** A native audio track in the video already keeps webOS's eARC mixer open.
+ * Send PCM directly in that case: a MediaStream element would add Chromium's
+ * AudioShifter, whose startup clock correction raises pitch by up to 10%.
+ * Keep the media-element route for callers without a native video carrier. */
+export function createAudioOutput({ win, context, source, onError, createNativeAudioSource, hasNativeAudioTrack = false }) {
   let closed = false;
   let destination = null;
   let element = null;
   let nativeRoute = null;
-  const mediaOutput = typeof context.createMediaStreamDestination === 'function' && !!win.document?.body;
+  const mediaOutput = !hasNativeAudioTrack && typeof context.createMediaStreamDestination === 'function' && !!win.document?.body;
   const type = mediaOutput ? 'media-stream' : 'audio-context';
 
   function destroy() {

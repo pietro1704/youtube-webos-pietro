@@ -12,6 +12,7 @@ export class AudioEngine {
     audioOffsetMs = 0,
     onError,
     createStretcher,
+    hasNativeAudioTrack = false,
     createNativeAudioSource
   }) {
     this.win = win;
@@ -104,7 +105,7 @@ export class AudioEngine {
       this.anchorPending = true;
       this.stalledTicks = 0;
     };
-    this.output = createAudioOutput({ win, context: this.ctx, source: this.gain, createNativeAudioSource,
+    this.output = createAudioOutput({ win, context: this.ctx, source: this.gain, createNativeAudioSource, hasNativeAudioTrack,
       onError: error => this.reportError(error) });
   }
 
