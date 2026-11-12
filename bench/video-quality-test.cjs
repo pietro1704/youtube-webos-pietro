@@ -72,6 +72,7 @@ function boot(preference, available, options = {}) {
     win.document.body.appendChild(controls);
   }
   let current = 'medium';
+  let range = 'auto';
   let videoId = 'abcdefghijk';
   let state = options.state ?? -1;
   let failures = options.failures || 0;
@@ -85,10 +86,11 @@ function boot(preference, available, options = {}) {
   player.setPlaybackQualityRange = (min, max) => {
     calls.push(['range', min, max]);
     if (failures-- > 0) throw new Error('player not ready');
+    range = min;
   };
   player.setPlaybackQuality = (quality) => {
     calls.push(['quality', quality]);
-    current = quality;
+    current = options.enforceRange && range !== 'auto' ? range : quality;
   };
   player.getVideoData = () => ({ video_id: videoId });
   player.getPlayerState = () => state;
@@ -114,6 +116,82 @@ function boot(preference, available, options = {}) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
+  // Native YouTube changes the quality, but an existing forced range wins.
+  for (const selection of ['720p', 'Automática']) {
+    const app = boot('hd2160', ['hd2160', 'hd1080', 'hd720'], { state: 1, enforceRange: true });
+    try {
+      await wait(350);
+      const player = app.win.document.getElementById('ytlr-player__player-container-player');
+      app.win.ytcfg = { msgs: { VIDEO_QUALITY: 'Qualidade', VIDEO_QUALITY_AUTO: 'Automática' } };
+      const menu = app.win.document.createElement('div');
+      menu.className = 'AmQJbe';
+      menu.innerHTML = '<ytlr-overlay-panel-header-renderer>Qualidade</ytlr-overlay-panel-header-renderer>' +
+        ['Automática', '720p', '1080p', '2160p'].map(label =>
+          `<ytlr-menu-item tabindex="0"><ytlr-button role="checkbox" tabindex="0"><yt-formatted-string>${label}</yt-formatted-string></ytlr-button></ytlr-menu-item>`).join('');
+      app.win.document.querySelector('ytlr-app').appendChild(menu);
+      const choice = [...menu.querySelectorAll('[role=checkbox]')].find(row => row.textContent === selection);
+      const quality = selection === '720p' ? 'hd720' : 'auto';
+      choice.addEventListener('click', () => player.setPlaybackQuality(quality));
+      choice.querySelector('yt-formatted-string').click();
+      await wait(350);
+      assert.equal(player.getPlaybackQuality(), quality, 'native quality must override the default range for this video');
+      assert.equal(JSON.parse(app.win.localStorage.getItem('ytaf-configuration')).preferredVideoQuality, 'hd2160');
+      app.setAvailable(['hd4320', 'hd2160', 'hd1080', 'hd720']);
+      app.setState(3);
+      await wait(350);
+      assert.equal(player.getPlaybackQuality(), quality, 'buffering and new levels must preserve individual quality');
+      app.newVideo('next-video');
+      await wait(350);
+      assert.equal(player.getPlaybackQuality(), 'hd2160', 'next video restores the green-menu default');
+    } finally { app.win.close(); }
+  }
+  for (const action of ['enter', 'cancel', 'hidden', 'detached', 'other-menu', 'failure']) {
+    const app = boot('hd2160', ['hd2160', 'hd720'], { state: 2, enforceRange: true });
+    try {
+      await wait(350);
+      const player = app.win.document.getElementById('ytlr-player__player-container-player');
+      app.win.ytcfg = { msgs: { VIDEO_QUALITY: 'Qualidade' } };
+      const menu = app.win.document.createElement('div');
+      menu.className = 'AmQJbe';
+      menu.innerHTML = `<ytlr-overlay-panel-header-renderer>${action === 'other-menu' ? 'Legendas' : 'Qualidade'}</ytlr-overlay-panel-header-renderer>` +
+        '<ytlr-menu-item tabindex="0"><ytlr-button role="checkbox"><yt-formatted-string>720p60 HDR</yt-formatted-string></ytlr-button></ytlr-menu-item>';
+      app.win.document.querySelector('ytlr-app').appendChild(menu);
+      const item = menu.querySelector('ytlr-menu-item');
+      item.focus();
+      if (action === 'hidden') menu.style.display = 'none';
+      if (action === 'detached') menu.parentNode.removeChild(menu);
+      if (action === 'failure') player.setPlaybackQualityRange = () => { throw new Error('rejected'); };
+      if (action === 'cancel') {
+        item.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+        item.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+      } else item.dispatchEvent(new app.win.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+      await wait(350);
+      assert.equal(player.getPlaybackQuality(), action === 'enter' ? 'hd720' : 'hd2160', action);
+      assert.equal(app.resumes(), 0, 'individual quality preserves pause');
+      assert.equal(JSON.parse(app.win.localStorage.getItem('ytaf-configuration')).preferredVideoQuality, 'hd2160');
+    } finally { app.win.close(); }
+  }
+  {
+    const app = boot('auto', ['hd2160', 'hd720'], { state: 1, enforceRange: true });
+    try {
+      await wait(350);
+      const player = app.win.document.getElementById('ytlr-player__player-container-player');
+      app.win.ytcfg = { msgs: { VIDEO_QUALITY: 'Qualidade' } };
+      const menu = app.win.document.createElement('div');
+      menu.className = 'AmQJbe';
+      menu.innerHTML = '<ytlr-overlay-panel-header-renderer>Qualidade</ytlr-overlay-panel-header-renderer>' +
+        '<ytlr-button role="checkbox"><yt-formatted-string>720p</yt-formatted-string></ytlr-button>';
+      app.win.document.querySelector('ytlr-app').appendChild(menu);
+      menu.querySelector('yt-formatted-string').click();
+      assert.equal(player.getPlaybackQuality(), 'hd720');
+      app.newVideo('second');
+      await wait(350);
+      assert.equal(player.getPlaybackQuality(), 'auto', 'Automatic default releases the prior individual range');
+      app.newVideo('abcdefghijk');
+      await wait(350);
+      assert.notEqual(player.getPlaybackQuality(), 'hd720', 'revisit cannot restore a stale override');
+    } finally { app.win.close(); }
+  }
   {
     const app = boot('hd1080', ['hd2160', 'hd720', 'medium']);
     await wait(350);

@@ -30,6 +30,8 @@ import {
   isWatchPage,
   SYNTHETIC_KEY_FLAG
 } from './utils.js';
+import { configuredMessage } from './native-playback-menu.js';
+import { getVideoQualityPreference } from './video-quality.js';
 import { installSpeedFeature } from './speed/controller.js';
 import { findNativeSpeedRow, nativeSpeedSelection, paintNativeSpeedOptions } from './speed/native-menu.js';
 
@@ -40,11 +42,11 @@ const MIN_SPEED = SPEED_STEPS[0];
 const MAX_SPEED = SPEED_STEPS[SPEED_STEPS.length - 1];
 
 /**
- * The rate the user asked for. It is backed by the settings store so it survives
- * autoplay, navigation and app relaunches.
+ * Effective rate for this video. Only the green menu changes the saved default.
  */
 let desiredSpeed = clamp(Number(configRead('defaultPlaybackSpeed')));
 let applying = false;
+let speedVideoId = null;
 let attachedVideo = null;
 let listenersBound = false;
 let hardwareSpeedFeature;
@@ -65,7 +67,8 @@ function initHardwareSpeedFeature() {
     notify: showNotification,
     configRead,
     configWrite,
-    getPlayer
+    getPlayer,
+    getQualityPreference: getVideoQualityPreference
   });
   return hardwareSpeedFeature;
 }
@@ -143,8 +146,9 @@ function applySpeed(rate, { notify = false } = {}) {
  * Re-assert the user's choice when that happens, but never fight our own write.
  */
 function onRateChange() {
+  syncVideoSpeed();
   if (getHardwareController()) return;
-  if (applying || desiredSpeed === DEFAULT_SPEED) return;
+  if (applying) return;
   const video = getVideo();
   if (!video) return;
   if (Math.abs(video.playbackRate - desiredSpeed) <= 0.001) return;
@@ -161,23 +165,33 @@ function bindVideo() {
   attachedVideo = video;
   video.addEventListener('ratechange', onRateChange);
   // A fresh <video> starts at 1x; restore the session's choice.
-  if (desiredSpeed !== DEFAULT_SPEED) applySpeed(desiredSpeed);
+  applySpeed(desiredSpeed);
 }
 
-/** Set an absolute rate. */
+function syncVideoSpeed() {
+  if (getHardwareController() || !isWatchPage()) return;
+  let id;
+  try { id = getPlayer()?.getVideoData?.()?.video_id; } catch { /* player loading */ }
+  id = id || window.location.href;
+  if (id === speedVideoId) return;
+  speedVideoId = id;
+  desiredSpeed = clamp(Number(configRead('defaultPlaybackSpeed')));
+  applySpeed(desiredSpeed);
+}
+
+/** Set an absolute rate for the current video only. */
 export function setSpeed(rate, { notify = true } = {}) {
   if (!isWatchPage()) return false;
+  syncVideoSpeed();
+  const previousSpeed = desiredSpeed;
   desiredSpeed = clamp(Number(rate) || DEFAULT_SPEED);
   const hardware = getHardwareController();
   if (hardware) {
     return hardware.setSpeed(desiredSpeed, { shouldNotify: notify });
   }
-  const persisted = String(Number(desiredSpeed.toFixed(2)));
-  if (configRead('defaultPlaybackSpeed') !== persisted) {
-    configWrite('defaultPlaybackSpeed', persisted);
-  }
   bindVideo();
   const ok = applySpeed(desiredSpeed, { notify });
+  if (!ok) desiredSpeed = previousSpeed;
   if (!ok && notify) {
     showNotification('Speed control unavailable for this video');
   }
@@ -189,6 +203,7 @@ export function stepSpeed(direction) {
   if (!isWatchPage()) return false;
   const hardware = getHardwareController();
   if (hardware) return hardware.step(direction);
+  syncVideoSpeed();
   const video = getVideo();
   const current = video ? video.playbackRate : desiredSpeed;
 
@@ -385,20 +400,6 @@ const MENU_ITEM_SELECTOR = 'ytlr-button[role="menuitem"]';
 const SPEED_ROW_FLAG = 'data-ytaf-speed-row';
 let settingsObserver = null;
 let adoptedMarkers = null;
-
-function configuredMessage(key) {
-  let messages;
-  try {
-    messages = window.ytcfg && typeof window.ytcfg.get === 'function' && window.ytcfg.get('msgs');
-  } catch { /* YouTube may replace its config provider during navigation. */ }
-  const sources = [window.ytcfg && window.ytcfg.msgs, messages,
-    window.yt && window.yt.msgs_, window.yt && window.yt.msgs,
-    window.yt && window.yt.config_ && window.yt.config_.msgs];
-  for (const source of sources) {
-    if (source && typeof source[key] === 'string') return source[key];
-  }
-  return null;
-}
 
 function paintNativeMenu() {
   if (!configRead('enablePlaybackSpeed') || !isWatchPage()) return;
@@ -676,7 +677,9 @@ export function initPlaybackSpeed() {
 
   const onPageUpdate = () => {
     if (!isWatchPage()) {
-      // Leaving the player: drop the reference, keep the chosen speed.
+      // Leaving the player ends the individual choice, even when revisiting it.
+      speedVideoId = null;
+      desiredSpeed = clamp(Number(configRead('defaultPlaybackSpeed')));
       if (attachedVideo) {
         attachedVideo.removeEventListener('ratechange', onRateChange);
         attachedVideo = null;
@@ -684,6 +687,7 @@ export function initPlaybackSpeed() {
       stopWatchingSettingsMenu();
       return;
     }
+    syncVideoSpeed();
     bindVideo();
     if (configRead('enablePlaybackSpeed')) {
       patchAvailableRates();
@@ -693,11 +697,11 @@ export function initPlaybackSpeed() {
   };
 
   window.addEventListener('ytaf-page-update', onPageUpdate);
+  window.addEventListener('yt-player-state-change', syncVideoSpeed);
   document.addEventListener('keydown', onSettingsKey, true);
   document.addEventListener('click', onNativeSpeedSelection, true);
   configAddChangeListener('defaultPlaybackSpeed', (evt) => {
     const next = clamp(Number(evt.detail.newValue));
-    if (Math.abs(next - desiredSpeed) <= 0.001) return;
     desiredSpeed = next;
     const hardware = getHardwareController();
     if (hardware) {

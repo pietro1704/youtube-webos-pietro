@@ -59,11 +59,11 @@ function harness(overrides = {}) {
   return { controller, config, writes, calls, flush, player, win, timers, notices };
 }
 
-test('speed choice persists and reloads at the same content position', () => {
+test('speed choice preserves the default and reloads at the same content position', () => {
   const { controller, writes, calls, flush } = harness();
   assert.equal(controller.setSpeed(2), true);
   flush();
-  assert.deepEqual(writes, [['defaultPlaybackSpeed', '2']]);
+  assert.deepEqual(writes, []);
   assert.deepEqual(calls, [
     ['quality', 'hd2160', 'hd2160'],
     ['load', 'test-video', 42]
@@ -149,10 +149,10 @@ test('a new speed choice after navigation gets its own video and position', () =
 });
 
 test('reset in the next video does not inherit the prior video burst rate', () => {
-  const { controller, player, calls, flush } = harness();
+  const { controller, player, calls, flush } = harness({ config: { defaultPlaybackSpeed: '1.5' } });
   controller.setSpeed(2);
   player.getVideoData = () => ({ video_id: 'next-video' });
-  assert.equal(controller.getSpeed(), 2);
+  assert.equal(controller.getSpeed(), 1.5);
   controller.reset();
   flush();
   assert.ok(calls.some(call => call[0] === 'load' && call[1] === 'next-video'));
@@ -355,7 +355,7 @@ test('reentrant newer choice survives an older load throwing', () => {
   };
   h.controller.setSpeed(2); h.flush();
   assert.equal(h.controller.getSpeed(), 1.5);
-  assert.equal(h.config.defaultPlaybackSpeed, '1.5');
+  assert.equal(h.config.defaultPlaybackSpeed, '1');
   h.player.loadVideoById = (...args) => h.calls.push(['load', ...args]);
   h.flush(); assert.equal(h.controller.getSpeed(), 1.5);
   assert.equal(h.calls.filter(x => x[0] === 'load').length, 1);

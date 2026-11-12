@@ -94,6 +94,11 @@ Pacotes do upstream não incluem as alterações deste fork.
 Configuration screen can be opened by pressing 🟩 GREEN button on the remote.
 Black screen / OLED mode can be toggled by pressing 🟥 RED button on the remote.
 
+Default Speed e Default Quality, no menu verde, definem as preferências para novos
+vídeos. Alterações de velocidade e resolução no menu do próprio vídeo valem apenas
+para o vídeo atual, inclusive ao alternar entre essas duas opções. O próximo vídeo
+volta aos padrões salvos.
+
 ### Autostart
 
 In order to autostart an application the following command needs to be executed

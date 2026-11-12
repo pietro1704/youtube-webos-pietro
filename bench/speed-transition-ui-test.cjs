@@ -3,7 +3,7 @@ const { boot } = require('./speed-hardware-test.cjs');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  const { win, video } = boot(null);
+  const { win, video } = boot(null, { defaultPlaybackSpeed: '1' });
   try {
     const player = win.document.getElementById('ytlr-player__player-container-player');
     let at = 42, state = 1;
@@ -28,7 +28,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     speed.setSpeed(2, { notify: false }); await wait(1200);
     assert.equal(speed.getSpeed(), 1.5);
     assert.equal(video.playbackRate, 1.5, 'failure preserves the existing timeline');
-    assert.equal(JSON.parse(win.localStorage.getItem('ytaf-configuration')).defaultPlaybackSpeed, '1.5');
+    assert.equal(JSON.parse(win.localStorage.getItem('ytaf-configuration')).defaultPlaybackSpeed, '1');
     player.loadVideoById = successfulLoad;
     player.setPlaybackQualityRange = () => { throw new Error('quality not ready'); };
     speed.setSpeed(2, { notify: false }); await wait(950);

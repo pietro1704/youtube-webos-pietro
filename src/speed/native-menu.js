@@ -1,3 +1,4 @@
+import { nativeMenuOption } from '../native-playback-menu.js';
 import { isSupportedSpeed } from './mse-hook.js';
 
 const OPTIONS = 'ytlr-button[role="checkbox"], [role="menuitemradio"]';
@@ -28,16 +29,6 @@ function speedMenu(menu, title) {
   return !!heading && heading.textContent.trim() === title;
 }
 
-function visibleMenu(menu) {
-  const win = menu.ownerDocument.defaultView;
-  for (let node = menu; node && node.nodeType === 1; node = node.parentElement) {
-    const style = win.getComputedStyle(node);
-    if (node.hidden || node.getAttribute('aria-hidden') === 'true' ||
-        style.display === 'none' || style.visibility === 'hidden') return false;
-  }
-  return true;
-}
-
 function optionSpeed(row, normal) {
   const label = row.querySelector('yt-formatted-string');
   const text = (label ? label.textContent : row.textContent).trim();
@@ -49,14 +40,8 @@ function optionSpeed(row, normal) {
 }
 
 export function nativeSpeedSelection(node, title, normal) {
-  if (!node || node.nodeType !== 1 || !node.isConnected) return null;
-  let row = node.closest(OPTIONS);
-  if (!row) {
-    const item = node.closest('ytlr-menu-item');
-    row = item && item.querySelector(OPTIONS);
-  }
-  const menu = row && row.closest('.AmQJbe');
-  if (!row || !speedMenu(menu, title) || !visibleMenu(menu)) return null;
+  const row = nativeMenuOption(node, [title].filter(Boolean));
+  if (!row) return null;
   return optionSpeed(row, normal);
 }
 

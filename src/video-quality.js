@@ -2,6 +2,7 @@ import { configRead, configAddChangeListener, configRemoveChangeListener } from 
 import { showNotification } from './notifications.js';
 import { isWebOS25 } from './webos-utils.js';
 import { sendKey, REMOTE_KEYS, SELECTORS, isWatchPage, SYNTHETIC_KEY_FLAG } from './utils.js';
+import { configuredMessage, nativeOptionFromEvent } from './native-playback-menu.js';
 import { qualityStorageHeight, selectPreferredQuality } from './playback-preferences.js';
 
 const DEBUG = false;
@@ -13,6 +14,7 @@ const ONE_YEAR_MS = 31536000000; // 365 * 24 * 60 * 60 * 1000
 // Caching: In-memory cache for localStorage & Config
 let cachedQualitySettings = null;
 let _preferredQuality = 'auto';
+let individualQuality = null;
 
 let player = null;
 let lastVideoId = null;
@@ -41,6 +43,63 @@ const STATE_PLAYING = 1;
 // const STATE_PAUSED = 2;
 const STATE_BUFFERING = 3;
 // const STATE_CUED = 5;
+
+/** Effective preference, shared with speed reloads without changing the default. */
+export function getVideoQualityPreference(targetPlayer) {
+  try {
+    if (individualQuality && individualQuality.player === targetPlayer &&
+        targetPlayer?.isConnected &&
+        targetPlayer.getVideoData?.()?.video_id === individualQuality.videoId) {
+      return individualQuality.quality;
+    }
+  } catch { /* player loading */ }
+  individualQuality = null;
+  return configRead('preferredVideoQuality');
+}
+
+function onNativeQualitySelection(evt) {
+  if (evt[SYNTHETIC_KEY_FLAG] || isDestroyed || !isWatchPage() || !player?.isConnected ||
+      document.getElementById(SELECTORS.PLAYER_ID) !== player) return;
+  if (evt.type === 'keydown' && evt.key !== 'Enter' && evt.keyCode !== 13) return;
+  const titles = [configuredMessage('VIDEO_QUALITY'), configuredMessage('QUALITY')].filter(Boolean);
+  const row = nativeOptionFromEvent(evt, titles);
+  if (!row) return;
+  const label = row.querySelector('yt-formatted-string');
+  const text = (label || row).textContent.trim();
+  const automatic = [configuredMessage('VIDEO_QUALITY_AUTO'), configuredMessage('QUALITY_AUTO'),
+    configuredMessage('AUTO'), 'Auto', 'Automatic', 'Automática', 'Automático'].filter(Boolean);
+  const match = text.match(/^(144|240|360|480|720|1080|1440|2160|2880|4320)p\d*(?:\s+(?:HDR|HD|4K|8K))*$/i);
+  const levels = { 144: 'tiny', 240: 'small', 360: 'medium', 480: 'large',
+    720: 'hd720', 1080: 'hd1080', 1440: 'hd1440', 2160: 'hd2160', 2880: 'hd2880', 4320: 'hd4320' };
+  const quality = match ? levels[match[1]] : automatic.includes(text) ? 'auto' : null;
+  const videoId = player.getVideoData?.()?.video_id;
+  if (!quality || !videoId) return;
+  // Release the default's range before YouTube handles this click/OK. Keep
+  // native propagation so its menu closes and its selected option updates.
+  const previous = individualQuality;
+  const selection = { player, videoId, quality };
+  const stillCurrent = () => individualQuality === selection && isWatchPage() &&
+    document.getElementById(SELECTORS.PLAYER_ID) === selection.player &&
+    selection.player.getVideoData?.()?.video_id === videoId;
+  individualQuality = selection;
+  cancelKickstart();
+  try {
+    selection.player.setPlaybackQualityRange(quality, quality);
+    if (!stillCurrent()) return;
+    selection.player.setPlaybackQuality?.(quality);
+    if (!stillCurrent()) return;
+  } catch {
+    if (individualQuality === selection) individualQuality = previous;
+    return;
+  }
+  _preferredQuality = quality;
+  qualitySetForVideo.clear();
+  qualityAttemptKey = null;
+  if (quality === 'auto') clearStoredQuality();
+  // The native player owns this selection; polling only retries on failure or
+  // when additional levels arrive, using the individual preference.
+  else handleStateChange(player.getPlayerState?.());
+}
 
 function isForceEnabled() {
   return _preferredQuality !== 'auto' && (!player?.isInline || !player.isInline());
@@ -247,6 +306,7 @@ function setQualityOnPlayer() {
     return { 
       success: afterQuality === target,
       upgraded: afterQuality === target,
+      quality: afterQuality,
       newQuality: qualityLabel || afterQuality
     };
     
@@ -261,7 +321,8 @@ function notifyIfUpgraded(result) {
     const notifiedPlayer = player;
     const notifiedVideo = player?.getVideoData?.()?.video_id;
     setTimeout(() => {
-      if (isDestroyed || player !== notifiedPlayer || player?.getVideoData?.()?.video_id !== notifiedVideo) return;
+      if (isDestroyed || player !== notifiedPlayer || player?.getVideoData?.()?.video_id !== notifiedVideo ||
+          player.getPlaybackQuality?.() !== result.quality) return;
       try {
         const finalQuality = player.getPlaybackQualityLabel?.() || result.newQuality || 'high quality';
         showNotification(`Video quality upgraded to ${finalQuality}`);
@@ -295,6 +356,21 @@ function interceptAndUpgradeQuality(videoId) {
 function handleStateChange(state) {
   if (isDestroyed || !player) return;
 
+  const effectiveQuality = getVideoQualityPreference(player);
+  if (effectiveQuality !== _preferredQuality) {
+    cancelKickstart();
+    _preferredQuality = effectiveQuality;
+    cachedQualitySettings = null;
+    qualitySetForVideo.clear();
+    qualityAttemptKey = null;
+    if (_preferredQuality === 'auto') {
+      clearStoredQuality();
+      try {
+        player.setPlaybackQualityRange?.('auto', 'auto');
+        player.setPlaybackQuality?.('auto');
+      } catch { /* the next native load still uses Automatic */ }
+    }
+  }
   const actualState = (state && state.data !== undefined) ? state.data : state;
   if (actualState === 2 || (activeKickstart && !validKickstart(activeKickstart))) cancelKickstart();
 
@@ -329,9 +405,8 @@ function handleStateChange(state) {
       videoBeingProcessed = null;
       DEBUG && console.info('[VideoQuality] 🎬 New video:', videoId);
       
-      if (actualState === STATE_UNSTARTED) {
-          setLocalStorageQuality();
-      }
+      cachedQualitySettings = null;
+      setLocalStorageQuality();
     }
     
     if (qualitySetForVideo.has(videoId)) {
@@ -381,7 +456,7 @@ function startStatePolling() {
     try {
       const state = player.getPlayerState?.();
       const id = player.getVideoData?.()?.video_id;
-      if (state !== lastKnownState || id !== lastPolledVideoId || (isForceEnabled() && (!qualitySetForVideo.has(id) || getTargetQuality() !== lastTargetQuality))) {
+      if (getVideoQualityPreference(player) !== _preferredQuality || state !== lastKnownState || id !== lastPolledVideoId || (isForceEnabled() && (!qualitySetForVideo.has(id) || getTargetQuality() !== lastTargetQuality))) {
         lastKnownState = state;
         lastPolledVideoId = id;
         handleStateChange(state);
@@ -423,6 +498,7 @@ export function destroyVideoQuality() {
   }
   
   player = null;
+  individualQuality = null;
   lastVideoId = null;
   lastKnownState = null;
   lastPolledVideoId = null;
@@ -476,6 +552,7 @@ export function initVideoQuality() {
         const onChange = (evt) => {
           if (isDestroyed) return;
           cancelKickstart();
+          individualQuality = null;
           _preferredQuality = evt.detail.newValue;
           
           if (isForceEnabled()) {
@@ -562,6 +639,8 @@ function setupListeners() {
     if (listenersSetup) return;
     listenersSetup = true;
     window.addEventListener('yt-navigate-finish', handleNavigation);
+    document.addEventListener('click', onNativeQualitySelection, true);
+    document.addEventListener('keydown', onNativeQualitySelection, true);
 
     // Passed directly: handleNavigation falls back to isWatchPage() when the
     // event carries no pageType, and ytaf-page-update never does.

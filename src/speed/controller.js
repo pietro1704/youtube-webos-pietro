@@ -167,7 +167,8 @@ export function createSpeedController({
   getPlayer,
   notify,
   configRead,
-  configWrite
+  configWrite,
+  getQualityPreference = () => configRead('preferredVideoQuality') || 'auto'
 }) {
   const configuredSpeed = Number(configRead('defaultPlaybackSpeed'));
   let currentSpeed = isSupportedSpeed(configuredSpeed) ? configuredSpeed : 1;
@@ -199,6 +200,11 @@ export function createSpeedController({
     if (evt.type === 'ytaf-page-update' && evt.detail?.isWatch !== false) return;
     cancelPending();
     cancelMenuSync();
+    if (evt.type === 'pagehide' || evt.detail?.isWatch === false) {
+      lastVideoId = null;
+      const preferred = Number(configRead('defaultPlaybackSpeed'));
+      currentSpeed = isSupportedSpeed(preferred) ? preferred : 1;
+    }
   }
   for (const type of ['hashchange', 'pagehide', 'ytaf-page-update'])
     win.addEventListener?.(type, cancelForNavigation);
@@ -301,7 +307,7 @@ export function createSpeedController({
       lastError = null;
       if (typeof player.setPlaybackQualityRange === 'function') {
         try {
-          const preferred = configRead('preferredVideoQuality') || 'auto';
+          const preferred = getQualityPreference(player);
           const quality = typeof player.getAvailableQualityLevels === 'function'
             ? selectPreferredQuality(player.getAvailableQualityLevels(), preferred) || 'auto'
             : preferred;
@@ -355,10 +361,11 @@ export function createSpeedController({
     }
   }
 
-  function setSpeed(speed, { immediate = false, shouldNotify = true, reload = true, persist = true } = {}) {
+  function setSpeed(speed, { immediate = false, shouldNotify = true, reload = true, persist = false } = {}) {
     if (destroyed) return false;
     speed = Number(speed);
     if (!isSupportedSpeed(speed)) return false;
+    getSpeed(); // Resolve video identity before comparing with the last choice.
     if (speed === currentSpeed) return true;
     if (!enabled()) {
       if (shouldNotify) notify('Playback speed is disabled in YTAF settings');
@@ -383,12 +390,14 @@ export function createSpeedController({
   }
 
   function cycle() {
+    getSpeed();
     const idx = SPEEDS.indexOf(currentSpeed);
     const nextIdx = (idx + 1) % SPEEDS.length;
     return setSpeed(SPEEDS[nextIdx]);
   }
 
   function step(dir) {
+    getSpeed();
     let idx = SUPPORTED_SPEEDS.indexOf(currentSpeed);
     if (idx === -1) idx = SUPPORTED_SPEEDS.indexOf(1);
     const nextIdx = Math.min(
@@ -496,7 +505,7 @@ export function createSpeedController({
 
 export function installSpeedFeature(
   win,
-  { notify, configRead: cfgRead, configWrite: cfgWrite, getPlayer }
+  { notify, configRead: cfgRead, configWrite: cfgWrite, getPlayer, getQualityPreference }
 ) {
   if (
     typeof win.AudioDecoder === 'undefined' ||
@@ -511,7 +520,8 @@ export function installSpeedFeature(
     getPlayer,
     notify,
     configRead: cfgRead,
-    configWrite: cfgWrite
+    configWrite: cfgWrite,
+    getQualityPreference
   });
   const mseHook = installMseHook(win, {
     getSpeed: ctrl.getSpeed,

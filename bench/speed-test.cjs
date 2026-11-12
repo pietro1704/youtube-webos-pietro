@@ -149,8 +149,31 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     win.__ytafSpeed.setSpeed(1.75);
     await wait(250);
     const saved = JSON.parse(win.localStorage.getItem('ytaf-configuration'));
-    t('[persistent] a speed chosen in the player is saved',
-      saved.defaultPlaybackSpeed === '1.75', 'saved=' + saved.defaultPlaybackSpeed);
+    t('[persistent] an individual speed preserves the saved default',
+      saved.defaultPlaybackSpeed === '1.5', 'saved=' + saved.defaultPlaybackSpeed);
+  }
+
+  // Autoplay often reuses the same <video> and player DOM node on older TVs.
+  {
+    const { win, video, player } = boot('working', { defaultPlaybackSpeed: '2' });
+    let id = 'first';
+    player.getVideoData = () => ({ video_id: id });
+    await wait(300);
+    win.ytcfg = { msgs: { VIDEO_SPEED: 'Velocidade', VIDEO_SPEED_NORMAL: 'Normal' } };
+    const menu = win.document.createElement('div');
+    menu.className = 'AmQJbe';
+    menu.innerHTML = '<ytlr-overlay-panel-header-renderer>Velocidade</ytlr-overlay-panel-header-renderer>' +
+      '<ytlr-button role="checkbox" tabindex="0"><yt-formatted-string>Normal</yt-formatted-string></ytlr-button>';
+    win.document.querySelector('ytlr-app').appendChild(menu);
+    menu.querySelector('yt-formatted-string').click();
+    t('[individual] native menu overrides 2x with Normal', video.playbackRate === 1);
+    video.playbackRate = 2;
+    t('[individual] quality reload cannot erase Normal', video.playbackRate === 1);
+    t('[individual] saved default remains 2x', JSON.parse(win.localStorage.getItem('ytaf-configuration')).defaultPlaybackSpeed === '2');
+    id = 'second';
+    win.dispatchEvent(new win.CustomEvent('yt-player-state-change', { detail: { state: 1, videoId: id } }));
+    t('[individual] same-element autoplay restores 2x', video.playbackRate === 2);
+    win.close();
   }
 
   // Speed must not apply off a watch page.
