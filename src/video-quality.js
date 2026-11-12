@@ -61,7 +61,8 @@ function onNativeQualitySelection(evt) {
   if (evt[SYNTHETIC_KEY_FLAG] || isDestroyed || !isWatchPage() || !player?.isConnected ||
       document.getElementById(SELECTORS.PLAYER_ID) !== player) return;
   if (evt.type === 'keydown' && evt.key !== 'Enter' && evt.keyCode !== 13) return;
-  const titles = [configuredMessage('VIDEO_QUALITY'), configuredMessage('QUALITY')].filter(Boolean);
+  const titles = [configuredMessage('QUALITY_FOR_VIDEO'), configuredMessage('VIDEO_QUALITY'),
+    configuredMessage('QUALITY')].filter(Boolean);
   const row = nativeOptionFromEvent(evt, titles);
   if (!row) return;
   const label = row.querySelector('yt-formatted-string');

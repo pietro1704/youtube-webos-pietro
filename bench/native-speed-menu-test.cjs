@@ -25,7 +25,7 @@ const selected = menu => Array.from(menu.querySelectorAll('[aria-checked="true"]
   player.getPlaybackQuality = () => quality;
   player.setPlaybackQualityRange = value => { quality = value; };
   player.setPlaybackQuality = value => { quality = value; };
-  win.ytcfg = { msgs: { VIDEO_SPEED: 'Velocidade da reprodução', VIDEO_SPEED_NORMAL: 'Normal', VIDEO_QUALITY: 'Qualidade', VIDEO_QUALITY_AUTO: 'Automática' } };
+  win.ytcfg = { msgs: { VIDEO_SPEED: 'Velocidade da reprodução', VIDEO_SPEED_NORMAL: 'Normal', QUALITY: 'Qualidade do vídeo', QUALITY_FOR_VIDEO: 'Qualidade do vídeo atual', VIDEO_QUALITY_AUTO: 'Automática' } };
   await wait(100);
   win.__ytafSpeed.setSpeed(2, { notify: false });
   await wait(900);
@@ -79,7 +79,7 @@ const selected = menu => Array.from(menu.querySelectorAll('[aria-checked="true"]
   // A speed reload must keep the quality chosen in this same video's menu.
   const qualityMenu = win.document.createElement('div');
   qualityMenu.className = 'AmQJbe';
-  qualityMenu.innerHTML = '<ytlr-overlay-panel-header-renderer>Qualidade</ytlr-overlay-panel-header-renderer>' +
+  qualityMenu.innerHTML = '<ytlr-overlay-panel-header-renderer>Qualidade do vídeo atual</ytlr-overlay-panel-header-renderer>' +
     '<ytlr-button role="checkbox"><yt-formatted-string>720p</yt-formatted-string></ytlr-button>';
   win.document.querySelector('ytlr-app').appendChild(qualityMenu);
   qualityMenu.querySelector('yt-formatted-string').click();
